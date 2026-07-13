@@ -1,0 +1,29 @@
+:root {
+  --bg-primary: #0b0f19;
+  --bg-secondary: #1a1f2e;
+  --bg-tertiary: #252b3b;
+  --text-primary: #e2e8f0;
+  --text-secondary: #a0aec0;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --danger: #ef4444;
+  --border: #2d3748;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+}
