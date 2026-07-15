@@ -1,8 +1,13 @@
+import os
+os.environ["HF_HUB_OFFLINE"] = "1"
+import asyncio
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
-import os
 from dotenv import load_dotenv
+import ollama
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
 
 load_dotenv()
 
@@ -18,11 +23,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Load ChromaDB
+embedding_model = HuggingFaceEmbeddings(
+    model_name="BAAI/bge-m3",
+    model_kwargs={"device": "cpu"},
+    encode_kwargs={"normalize_embeddings":True},
+    cache_folder=None 
+    )
+vectorstore = Chroma(
+    persist_directory = "./chroma_db",
+    embedding_function=embedding_model
+)
+print("ChromaDB loaded sucessfully !")
+
+
 # helper
 def run_query(query, params=None):
     with engine.connect() as conn:
         result = conn.execute(text(query), params or {})
         return [dict(row._mapping) for row in result]
+    
+def get_schema_context():
+    """schema description"""
+    return """
+   Tables: casemaster (crimeno, caseno, crimeregistereddate, brieffacts, casestatusid),
+    complainant (complainantname, ageyear),
+    victim (victimname, ageyear),
+    accused (accusedname, ageyear, personid),
+    ext_gang (gangname, territorydistrictid),
+    ext_financialaccount (accountnumber, bankname, balance, personpoolid),
+    ext_transaction (fromaccountid, toaccountid, amount, transactiondate, remarks),
+    ext_phonecall (callerpersonpoolid, receiverpersonpoolid, calldatetime, durationsec).
+    You can JOIN tables using casemasterid, personpoolid, etc.
+    """
 
 #endpoints
 @app.get("/api/firs")
@@ -122,16 +156,83 @@ def get_accounts(person_id: int = None, limit: int = 50):
     params["limit"] = limit
     return run_query(query, params)
 
+# Return summary of latest FIR
 @app.post("/api/chat")
-def chat_endpoint(request: dict):
-    query = request.get("query", "")
-    if "fir" in query.lower():
-        # Return a summary of the latest FIR
-        fir = run_query("SELECT crimeno, brieffacts FROM casemaster ORDER BY crimeregistereddate DESC LIMIT 1")
-        reply = f"Latest FIR: {fir[0]['crimeno']} - {fir[0]['brieffacts']}"
-    elif "gang" in query.lower():
-        gangs = run_query("SELECT gangname FROM ext_gang LIMIT 3")
-        reply = "Some gangs: " + ", ".join(g['gangname'] for g in gangs)
-    else:
-        reply = "I can help with FIR details, gang info, or case statuses. Please ask a specific question."
-    return {"reply": reply}
+async def chat_endpoint(request: dict):
+    user_query = request.get("query" , "")
+    # language detection
+    lang_hint = "kn" if any(ord(c) > 127 for c in user_query) else "en"
+
+    async def fetch_sql_context():
+        sql_prompt = f""" You are a SQL Expert. Given the following PostgreSQL schema:
+        {get_schema_context()}
+        Write an SQL query that answers the user's question. Only return the SQL , no explanation.
+        User question = {user_query}
+        SQL:"""
+
+        try:
+            response = ollama.chat(
+                model="aya-23-8b",
+                messages=[{"role": "user" , "content": sql_prompt}]
+            )
+            sql_query = response["message"]["content"].strip()
+            print(f"Generated SQL : {sql_query}")
+            if sql_query.startswith("```sql"):
+                sql_query = sql_query[6:]
+            if sql_query.endswith("```"):
+                sql_query = sql_query[:-3]
+
+            result = run_query(sql_query)
+            if result:
+                header = " | ".join(result[0].keys())
+                rows = "\n".join([" | ".join(str(v) for v in r.values()) for r in result])
+
+                return f"[Database Results]\n{header}\n{'-'*len(header)}\n{rows}"
+            
+            else:
+                return f"[Database Results] No matching records"
+            
+        except Exception as e:
+            return f"[Database Error] could not retrieve the data ! : {str(e)}"
+        
+    async def fetch_vector_context():
+        try:
+            docs = vectorstore.similarity_search(user_query , k=3)
+            chunks = [f"... From {d.metadata.get('source','unknown')} ---\n{d.page_content}" for d in docs]
+
+            return "[Relevant FIR Document Excerpts]\n" + "\n\n".join(chunks)
+        
+        except Exception as e:
+            return f"[Document Error] {str(e)}"
+        
+    sql_context , vector_context = await asyncio.gather(
+        fetch_sql_context(),
+        fetch_vector_context()
+    )
+
+    system_msg = f""" You are an Expert AI Assitant for Karanataka Police.
+    You have access to both structured crime database results and excerpts from real FIR documents.
+Use the provided contexts to answer the user's question accurately.
+If the answer is not contained in the contexts, say so politely.
+Answer in the same language as the user's query (detected language: {'Kannada' if lang_hint=='kn' else 'English'}).
+Always cite specific case numbers or document sources when possible.
+    """
+
+    final_prompt = f"""
+    {system_msg}
+    {sql_context}
+    {vector_context}
+    User question : {user_query}
+    Answer :
+     """
+    
+    try : 
+        response = ollama.chat(
+            model="gemma:2b",
+            messages = [{"role":"user" , "content":final_prompt}]
+        )
+        reply = response["message"]["content"]
+    except Exception as e:
+        return f"Error in generating answer : {str(e)}"
+    
+    return {"reply" : reply}
