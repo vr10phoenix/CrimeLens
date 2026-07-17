@@ -6,9 +6,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 
-// ==========================================
 // MOCK DATA: KARNATAKA POLICE INTEL
-// ==========================================
 const MOCK_DATA = {
   analytics: {
     stats: [
@@ -44,9 +42,8 @@ const MOCK_DATA = {
   }
 };
 
-// ==========================================
-// SHARED UI COMPONENTS (Tactical Theme)
-// ==========================================
+
+// KSP Conversional UI component
 const Card = ({ children, className = "", title, icon: Icon, action }) => (
   <div className={`relative bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-xl overflow-hidden ${className}`}>
     {/* Tactical corner accents */}
@@ -88,9 +85,8 @@ const CustomLineChart = ({ data }) => {
   );
 };
 
-// ==========================================
-// MODULE 1: CHATBOT INTERFACE
-// ==========================================
+
+// CHATBOT INTERFACE
 const ChatModule = () => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -211,80 +207,161 @@ const ChatModule = () => {
   );
 };
 
-// ==========================================
-// MODULE 2: CRIME ANALYTICS
-// ==========================================
-const AnalyticsModule = () => (
-  <div className="p-8 space-y-6 overflow-y-auto h-full animate-in slide-in-from-bottom-4 duration-500">
-    <div className="flex items-center justify-between mb-8">
-      <div>
-        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <BarChart3 className="text-blue-500" /> State-Wide Crime Analytics
-        </h2>
-        <p className="text-slate-400 text-sm">Real-time telemetry and historical data aggregation.</p>
-      </div>
-      <div className="flex gap-2">
-        <span className="px-3 py-1 bg-slate-800 border border-slate-700 rounded text-xs text-slate-300">Last 30 Days</span>
-        <span className="px-3 py-1 bg-blue-600/20 border border-blue-500/50 rounded text-xs text-blue-400 animate-pulse flex items-center gap-2">
-          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full" /> Live Sync
-        </span>
-      </div>
-    </div>
 
-    {/* Stat Grid */}
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      {MOCK_DATA.analytics.stats.map((stat, i) => (
-        <Card key={i} className="bg-slate-900/40">
-          <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">{stat.label}</p>
+// CRIME ANALYTICS
+const AnalyticsModule = () => {
+  const [stats, setStats] = useState(null);
+  const [districtData, setDistrictData] = useState([]);
+  const [monthlyTrend, setMonthlyTrend] = useState([]);
+  const [crimeTypes, setCrimeTypes] = useState([]);
+  const [gangActivity, setGangActivity] = useState([]);
+  const [financialCrimes, setFinancialCrimes] = useState(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [statsRes, districtRes, trendRes, crimeRes, gangRes, finRes] = await Promise.all([
+          axios.get('http://localhost:8001/api/analytics/stats'),
+          axios.get('http://localhost:8001/api/analytics/district_crimes'),
+          axios.get('http://localhost:8001/api/analytics/monthly_trend'),
+          axios.get('http://localhost:8001/api/analytics/crime_types'),
+          axios.get('http://localhost:8001/api/analytics/gang_activity'),
+          axios.get('http://localhost:8001/api/analytics/financial_crimes'),
+        ]);
+        setStats(statsRes.data);
+        setDistrictData(districtRes.data);
+        setMonthlyTrend(trendRes.data);
+        setCrimeTypes(crimeRes.data);
+        setGangActivity(gangRes.data);
+        setFinancialCrimes(finRes.data);
+      } catch (error) {
+        console.error("Analytics fetch error:", error);
+      }
+    };
+    fetchData();
+  }, []);
+
+  if (!stats) return <div className="p-8 text-slate-400">Loading analytics...</div>;
+
+  return (
+    <div className="p-8 space-y-6 overflow-y-auto h-full animate-in slide-in-from-bottom-4 duration-500">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <BarChart3 className="text-blue-500" /> State-Wide Crime Analytics
+          </h2>
+          <p className="text-slate-400 text-sm">Real-time telemetry and historical data aggregation.</p>
+        </div>
+        <div className="flex gap-2">
+          <span className="px-3 py-1 bg-slate-800 border border-slate-700 rounded text-xs text-slate-300">All Time</span>
+          <span className="px-3 py-1 bg-blue-600/20 border border-blue-500/50 rounded text-xs text-blue-400 animate-pulse flex items-center gap-2">
+            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full" /> Live
+          </span>
+        </div>
+      </div>
+
+      {/* Stat Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="bg-slate-900/40">
+          <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">Total FIRs</p>
           <div className="flex items-end justify-between">
-            <h3 className="text-3xl font-bold text-white font-mono">{stat.value}</h3>
-            <span className={`text-xs font-bold px-2 py-1 rounded bg-slate-950 border ${stat.danger ? 'text-rose-400 border-rose-900/50' : 'text-emerald-400 border-emerald-900/50'}`}>
-              {stat.trend}
-            </span>
+            <h3 className="text-3xl font-bold text-white font-mono">{stats.total_firs}</h3>
+            <span className="text-xs font-bold px-2 py-1 rounded bg-slate-950 border border-blue-900/50 text-blue-400">Total</span>
           </div>
         </Card>
-      ))}
-    </div>
+        <Card className="bg-slate-900/40">
+          <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">Accused Persons</p>
+          <h3 className="text-3xl font-bold text-white font-mono">{stats.total_accused}</h3>
+        </Card>
+        <Card className="bg-slate-900/40">
+          <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">Active Gangs</p>
+          <h3 className="text-3xl font-bold text-white font-mono">{stats.total_gangs}</h3>
+        </Card>
+        <Card className="bg-slate-900/40">
+          <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">Financial Accounts</p>
+          <h3 className="text-3xl font-bold text-white font-mono">{stats.total_accounts}</h3>
+        </Card>
+      </div>
 
-    {/* Charts Area */}
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <Card title="Incident Frequency (Annual)" icon={Activity} className="lg:col-span-2">
-        <CustomLineChart data={MOCK_DATA.analytics.trends} />
-      </Card>
-      
-      <Card title="Jurisdiction Load" icon={MapIcon}>
-        <div className="space-y-4 mt-2">
-          {[
-            { city: 'Bengaluru South', load: 85 },
-            { city: 'Mangaluru', load: 62 },
-            { city: 'Hubballi-Dharwad', load: 45 },
-            { city: 'Mysuru', load: 38 },
-          ].map((area, i) => (
-            <div key={i}>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-slate-300">{area.city}</span>
-                <span className="text-slate-500 font-mono">{area.load}%</span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full rounded-full ${area.load > 80 ? 'bg-rose-500' : 'bg-blue-500'}`} 
-                  style={{ width: `${area.load}%` }} 
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-    </div>
-  </div>
-);
+      {/* Charts Area */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card title="Monthly Crime Trend (2 Years)" icon={Activity} className="lg:col-span-2">
+          <div className="w-full h-48 flex items-end justify-between gap-1 relative">
+            <div className="absolute inset-0 border-b border-l border-slate-700/50" />
+            {monthlyTrend.slice(-12).map((item, i) => {
+              const maxVal = Math.max(...monthlyTrend.map(d => d.cases));
+              return (
+                <div key={i} className="relative group w-full flex justify-center h-full items-end z-10">
+                  <div
+                    className="w-full bg-gradient-to-t from-blue-600/80 to-cyan-400/80 rounded-t-sm transition-all duration-500 opacity-60 hover:opacity-100"
+                    style={{ height: `${(item.cases / maxVal) * 100}%` }}
+                  />
+                  <div className="absolute -top-8 bg-slate-800 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity border border-slate-600 z-20">
+                    {item.month}: {item.cases}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
 
-// ==========================================
+        <Card title="Top Crime Types" icon={AlertTriangle}>
+          <div className="space-y-3 mt-2">
+            {crimeTypes.slice(0, 5).map((crime, i) => (
+              <div key={i} className="flex items-center justify-between">
+                <span className="text-sm text-slate-300">{crime.crimeheadname}</span>
+                <span className="text-xs font-mono text-slate-400">{crime.count}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* District & Gang Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card title="District-wise Cases" icon={MapIcon}>
+          <div className="space-y-2">
+            {districtData.slice(0, 6).map((d, i) => (
+              <div key={i} className="flex justify-between text-sm">
+                <span className="text-slate-300">{d.districtname}</span>
+                <span className="text-slate-400 font-mono">{d.case_count}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card title="Gang Activity" icon={Fingerprint}>
+          <div className="space-y-2">
+            {gangActivity.map((gang, i) => (
+              <div key={i} className="flex justify-between text-sm">
+                <span className="text-slate-300">{gang.gangname}</span>
+                <span className="text-slate-400 font-mono">{gang.member_count} members, {gang.involved_cases} cases</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
 // MODULE 3: ML PREDICTIONS
-// ==========================================
 const MLPredictiveModule = () => {
-  // Generate a random heat grid to simulate AI processing
-  const heatGrid = Array.from({ length: 64 }).map(() => Math.floor(Math.random() * 100));
+  // random heat grid to simulate Model processing
+  let heatGrid = Array.from({ length: 64 }).map(() => Math.floor(Math.random() * 100));
+
+  function fluctuateGrid(){
+    heatGrid = heatGrid.map(val => {
+       const delta = Math.floor(Math.random() * 11) - 5;
+       let newVal = val + delta;
+
+       if(newVal < 0) newVal = 0;
+       if(newVal > 0) newVal = 100;
+       return newVal;
+    });
+    console.log(heatGrid);
+  }
+
+  setInterval(fluctuateGrid , 5000 + Math.floor(Math.random() * 1000))
 
   return (
     <div className="p-8 space-y-6 overflow-y-auto h-full animate-in slide-in-from-bottom-4 duration-500">
@@ -349,93 +426,166 @@ const MLPredictiveModule = () => {
   );
 };
 
-// ==========================================
-// MODULE 4: CRIME NETWORK GRAPH
-// ==========================================
-const NetworkModule = () => (
-  <div className="p-8 space-y-6 h-full flex flex-col animate-in slide-in-from-bottom-4 duration-500">
-    <div className="flex items-center justify-between mb-4">
-      <div>
-        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Network className="text-emerald-500" /> Syndicate Mapping
-        </h2>
-        <p className="text-slate-400 text-sm">Known associates, hierarchies, and shell corp connections.</p>
+const NetworkModule = () => {
+  const [networkData, setNetworkData] = useState({ nodes: [], edges: [] });
+  const [loading, setLoading] = useState(true);
+  const [selectedNode, setSelectedNode] = useState(null);
+
+  useEffect(() => {
+    axios.get('http://localhost:8001/api/analytics/network')
+      .then(res => {
+        const rawNodes = res.data.nodes || [];
+        const rawEdges = res.data.edges || [];
+
+        // SVG rendering
+        const nodes = rawNodes.map((node, index) => ({
+          id: node.id,
+          name: node.name,
+          role: "Person",   // can be enriched later with actual role data
+          status: "active", // default; can be derived from arrest records
+          x: 20 + (index % 4) * 20,   // simple grid layout
+          y: 20 + Math.floor(index / 4) * 20
+        }));
+
+        const edges = rawEdges.map(edge => ({
+          source: edge.source,
+          target: edge.target
+        }));
+
+        setNetworkData({ nodes, edges });
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Network fetch error:", err);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center h-full text-slate-400">
+        Loading network data...
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-8 space-y-6 h-full flex flex-col animate-in slide-in-from-bottom-4 duration-500">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <Network className="text-emerald-500" /> Syndicate Mapping
+          </h2>
+          <p className="text-slate-400 text-sm">Known associates, hierarchies, and shell corp connections.</p>
+        </div>
+      </div>
+
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
+        {/* Node Graph Area */}
+        <Card className="lg:col-span-3 h-full overflow-hidden bg-slate-950 flex items-center justify-center relative border-emerald-900/30">
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(16,185,129,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(16,185,129,0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
+          
+          {/* SVG Lines for Edges */}
+          <svg className="absolute inset-0 w-full h-full pointer-events-none">
+            {networkData.edges.map((edge, i) => {
+              const source = networkData.nodes.find(n => n.id === edge.source);
+              const target = networkData.nodes.find(n => n.id === edge.target);
+              if (!source || !target) return null;
+              return (
+                <line 
+                  key={i}
+                  x1={`${source.x}%`}
+                  y1={`${source.y}%`}
+                  x2={`${target.x}%`}
+                  y2={`${target.y}%`}
+                  stroke="#10b981"
+                  strokeWidth="2"
+                  strokeOpacity="0.3"
+                  strokeDasharray="4 4"
+                  className="animate-[dash_20s_linear_infinite]"
+                />
+              );
+            })}
+          </svg>
+
+          {/* HTML Nodes */}
+          {networkData.nodes.map((node) => (
+            <div 
+              key={node.id} 
+              className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group cursor-pointer"
+              style={{ left: `${node.x}%`, top: `${node.y}%` }}
+              onClick={() => setSelectedNode(node)}
+            >
+              <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center shadow-[0_0_15px_rgba(0,0,0,0.5)] z-10 transition-transform group-hover:scale-110 ${
+                node.status === 'active' ? 'bg-slate-900 border-rose-500 text-rose-500' :
+                node.status === 'arrested' ? 'bg-slate-900 border-emerald-500 text-emerald-500' :
+                'bg-slate-900 border-amber-500 text-amber-500'
+              }`}>
+                {node.role === "Boss" || node.role === "Leader" ? <Lock size={20} /> : <User size={20} />}
+              </div>
+              <div className="mt-2 text-center bg-slate-900/80 px-2 py-1 rounded border border-slate-700/50 backdrop-blur-sm opacity-80 group-hover:opacity-100">
+                <p className="text-xs font-bold text-white whitespace-nowrap">{node.name}</p>
+                <p className="text-[9px] text-slate-400 uppercase tracking-wide">{node.role}</p>
+              </div>
+            </div>
+          ))}
+        </Card>
+
+        {/* Target Details Sidebar – now shows selected node info */}
+        <Card title={selectedNode ? selectedNode.name : "Active Target Details"} icon={Eye} className="h-full overflow-y-auto border-emerald-900/30">
+          {selectedNode ? (
+            <div className="flex flex-col items-center mt-4">
+              <div className={`w-20 h-20 rounded-full border-2 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(0,0,0,0.5)] ${
+                selectedNode.status === 'active' ? 'bg-slate-900 border-rose-500 text-rose-500' :
+                'bg-slate-900 border-amber-500 text-amber-500'
+              }`}>
+                <User size={32} />
+              </div>
+              <h3 className="text-lg font-bold text-white tracking-widest">{selectedNode.name}</h3>
+              <p className="text-rose-500 text-xs font-mono font-bold mt-1">ID: {selectedNode.id}</p>
+              <div className="space-y-4 mt-6 w-full">
+                <div className="bg-slate-950 p-3 rounded border border-slate-800">
+                  <p className="text-[10px] text-slate-500 uppercase">Role</p>
+                  <p className="text-sm text-slate-200 font-mono mt-1">{selectedNode.role || "Unknown"}</p>
+                </div>
+                <div className="bg-slate-950 p-3 rounded border border-slate-800">
+                  <p className="text-[10px] text-slate-500 uppercase">Status</p>
+                  <p className="text-sm text-slate-200 font-mono mt-1">{selectedNode.status || "Active"}</p>
+                </div>
+                <button className="w-full py-2 bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/50 rounded transition-colors text-sm font-bold tracking-wider">
+                  VIEW FULL PROFILE
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center mb-6 mt-4">
+              <div className="w-20 h-20 bg-rose-950 border border-rose-500 rounded-full flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(244,63,94,0.2)]">
+                <User size={32} className="text-rose-500" />
+              </div>
+              <h3 className="text-lg font-bold text-white tracking-widest">TARGET ALPHA</h3>
+              <p className="text-rose-500 text-xs font-mono font-bold mt-1">STATUS: AT LARGE</p>
+              <div className="space-y-4 mt-4 w-full">
+                <div className="bg-slate-950 p-3 rounded border border-slate-800">
+                  <p className="text-[10px] text-slate-500 uppercase">Known Aliases</p>
+                  <p className="text-sm text-slate-200 font-mono mt-1">"The Ghost", "R-Bhai"</p>
+                </div>
+                <div className="bg-slate-950 p-3 rounded border border-slate-800">
+                  <p className="text-[10px] text-slate-500 uppercase">Last Known Location</p>
+                  <p className="text-sm text-slate-200 font-mono mt-1">Mangaluru Docks (48h ago)</p>
+                </div>
+                <button className="w-full py-2 bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/50 rounded transition-colors text-sm font-bold tracking-wider">
+                  INITIATE ARREST PROTOCOL
+                </button>
+              </div>
+            </div>
+          )}
+        </Card>
       </div>
     </div>
+  );
+};
 
-    <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
-      {/* Node Graph Area */}
-      <Card className="lg:col-span-3 h-full overflow-hidden bg-slate-950 flex items-center justify-center relative border-emerald-900/30">
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(16,185,129,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(16,185,129,0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
-        
-        {/* SVG Lines for Edges */}
-        <svg className="absolute inset-0 w-full h-full pointer-events-none">
-          {MOCK_DATA.network.edges.map((edge, i) => {
-            const source = MOCK_DATA.network.nodes.find(n => n.id === edge.source);
-            const target = MOCK_DATA.network.nodes.find(n => n.id === edge.target);
-            return (
-              <line 
-                key={i} x1={`${source.x}%`} y1={`${source.y}%`} x2={`${target.x}%`} y2={`${target.y}%`}
-                stroke="#10b981" strokeWidth="2" strokeOpacity="0.3" strokeDasharray="4 4"
-                className="animate-[dash_20s_linear_infinite]"
-              />
-            );
-          })}
-        </svg>
-
-        {/* HTML Nodes */}
-        {MOCK_DATA.network.nodes.map((node) => (
-          <div 
-            key={node.id} 
-            className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group cursor-pointer"
-            style={{ left: `${node.x}%`, top: `${node.y}%` }}
-          >
-            <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center shadow-[0_0_15px_rgba(0,0,0,0.5)] z-10 transition-transform group-hover:scale-110 ${
-              node.status === 'active' ? 'bg-slate-900 border-rose-500 text-rose-500' :
-              node.status === 'arrested' ? 'bg-slate-900 border-emerald-500 text-emerald-500' :
-              'bg-slate-900 border-amber-500 text-amber-500'
-            }`}>
-              {node.role.includes("Boss") ? <Lock size={20} /> : <User size={20} />}
-            </div>
-            <div className="mt-2 text-center bg-slate-900/80 px-2 py-1 rounded border border-slate-700/50 backdrop-blur-sm opacity-80 group-hover:opacity-100">
-              <p className="text-xs font-bold text-white whitespace-nowrap">{node.name}</p>
-              <p className="text-[9px] text-slate-400 uppercase tracking-wide">{node.role}</p>
-            </div>
-          </div>
-        ))}
-      </Card>
-
-      {/* Target Details Sidebar */}
-      <Card title="Active Target Details" icon={Eye} className="h-full overflow-y-auto border-emerald-900/30">
-        <div className="flex flex-col items-center mb-6 mt-4">
-          <div className="w-20 h-20 bg-rose-950 border border-rose-500 rounded-full flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(244,63,94,0.2)]">
-            <User size={32} className="text-rose-500" />
-          </div>
-          <h3 className="text-lg font-bold text-white tracking-widest">TARGET ALPHA</h3>
-          <p className="text-rose-500 text-xs font-mono font-bold mt-1">STATUS: AT LARGE</p>
-        </div>
-        
-        <div className="space-y-4">
-          <div className="bg-slate-950 p-3 rounded border border-slate-800">
-            <p className="text-[10px] text-slate-500 uppercase">Known Aliases</p>
-            <p className="text-sm text-slate-200 font-mono mt-1">"The Ghost", "R-Bhai"</p>
-          </div>
-          <div className="bg-slate-950 p-3 rounded border border-slate-800">
-            <p className="text-[10px] text-slate-500 uppercase">Last Known Location</p>
-            <p className="text-sm text-slate-200 font-mono mt-1">Mangaluru Docks (48h ago)</p>
-          </div>
-          <button className="w-full py-2 bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/50 rounded transition-colors text-sm font-bold tracking-wider">
-            INITIATE ARREST PROTOCOL
-          </button>
-        </div>
-      </Card>
-    </div>
-  </div>
-);
-
-// ==========================================
 // MAIN APPLICATION ROOT (Routing & Layout)
-// ==========================================
 export default function App() {
   const [activeModule, setActiveModule] = useState('chat');
 
