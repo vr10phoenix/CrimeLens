@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, User, Shield, Map as MapIcon, Activity, Database, AlertTriangle, 
   Menu, Search, MoreVertical, BrainCircuit, Network, BarChart3, 
-  Crosshair, Zap, Fingerprint, Lock, ChevronRight, Eye, Radio
+  Crosshair, Zap, Fingerprint, Lock, ChevronRight, Eye, Radio,
+  DatabaseIcon
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -23,6 +24,7 @@ const MOCK_DATA = {
       { id: 2, name: "Koramangala 8th Block", risk: 78, type: "Narcotics" },
       { id: 3, name: "Mangaluru Port Zone", risk: 85, type: "Smuggling" },
       { id: 4, name: "Hubballi Central", risk: 64, type: "Extortion" },
+      { id: 4, name: "Commerecial Street : JP Morgan", risk: 81, type: "Mass Bank Robbery" },
     ]
   },
   network: {
@@ -135,7 +137,7 @@ const ChatModule = () => {
               <Shield size={72} className="text-blue-400 relative z-10" strokeWidth={1} />
               <Crosshair size={120} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-500/20 animate-[spin_10s_linear_infinite]" />
             </div>
-            <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">KSP Tactical AI</h2>
+            <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">CrimeLens AI</h2>
             <p className="text-slate-400 text-sm mb-8 max-w-lg">
               Secure neural-link established. Querying criminal databases, real-time FIR logs, and predictive risk matrices.
             </p>
@@ -379,7 +381,7 @@ const MLPredictiveModule = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Heatmap Grid */}
-        <Card title="Spatial Risk Matrix" icon={Crosshair} className="lg:col-span-1 border-purple-900/50">
+        <Card title="Spatial Risk Matrix (beta)" icon={Crosshair} className="lg:col-span-1 border-purple-900/50">
           <div className="grid grid-cols-8 gap-1 p-2 bg-slate-950 rounded-lg border border-slate-800 relative overflow-hidden">
             <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(168,85,247,0.05)_50%)] bg-[length:100%_4px] pointer-events-none z-10" />
             {heatGrid.map((val, i) => (
@@ -431,25 +433,42 @@ const NetworkModule = () => {
   const [loading, setLoading] = useState(true);
   const [selectedNode, setSelectedNode] = useState(null);
 
-  useEffect(() => {
-    axios.get('http://localhost:8001/api/analytics/network')
+useEffect(() => {
+    axios.get('http://localhost:8001/api/analytics/neo4j-network?limit=60')
       .then(res => {
         const rawNodes = res.data.nodes || [];
         const rawEdges = res.data.edges || [];
+        const totalNodes = rawNodes.length;
 
-        // SVG rendering
-        const nodes = rawNodes.map((node, index) => ({
-          id: node.id,
-          name: node.name,
-          role: "Person",   // can be enriched later with actual role data
-          status: "active", // default; can be derived from arrest records
-          x: 20 + (index % 4) * 20,   // simple grid layout
-          y: 20 + Math.floor(index / 4) * 20
-        }));
+        // Golden Angle in radians for organic, non-overlapping radial distribution
+        const goldenAngle = 137.5 * (Math.PI / 180); 
+        const maxRadius = 40; // Keeps nodes within 10% to 90% bounds of the container
+
+        const nodes = rawNodes.map((node, index) => {
+          const id = node.personId || node.gangId || node.accountId || node.caseId;
+          const name = node.name || node.accountNumber || node.crimeNo || 'Unknown';
+          const role = node.nodeType || 'Unknown';
+          const status = (role === 'Gang' ? 'high' : (node.status === 'Untraced' ? 'arrested' : 'active'));
+          
+          // Calculate spiral coordinates
+          // Math.max prevents division by zero if there's only 1 node
+          const radius = Math.sqrt(index / Math.max(1, totalNodes - 1)) * maxRadius;
+          const angle = index * goldenAngle;
+
+          return {
+            id: id,
+            name: name,
+            role: role,
+            status: status,
+            x: 50 + radius * Math.cos(angle),
+            y: 50 + radius * Math.sin(angle)
+          };
+        });
 
         const edges = rawEdges.map(edge => ({
           source: edge.source,
-          target: edge.target
+          target: edge.target,
+          type: edge.type
         }));
 
         setNetworkData({ nodes, edges });
@@ -590,7 +609,7 @@ export default function App() {
   const [activeModule, setActiveModule] = useState('chat');
 
   const navigation = [
-    { id: 'chat', icon: Database, label: "Intel Assistant", color: "text-blue-500", bg: "bg-blue-600" },
+    { id: 'chat', icon: DatabaseIcon, label: "Conversional AI Assistant", color: "text-red-500", bg: "bg-blue-600" },
     { id: 'analytics', icon: BarChart3, label: "Crime Analytics", color: "text-blue-500", bg: "bg-blue-600" },
     { id: 'ml', icon: BrainCircuit, label: "Predictive AI", color: "text-purple-500", bg: "bg-purple-600" },
     { id: 'network', icon: Network, label: "Network Map", color: "text-emerald-500", bg: "bg-emerald-600" },
@@ -612,7 +631,7 @@ export default function App() {
             </div>
           </div>
           <div>
-            <h1 className="text-lg font-black text-white tracking-widest font-mono">CRIMELENS</h1>
+            <h1 className="text-lg font-black text-white tracking-widest font-mono">CrimeLens</h1>
             <p className="text-[10px] text-emerald-400 flex items-center gap-1.5 uppercase tracking-widest font-bold">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Secure Link Active
