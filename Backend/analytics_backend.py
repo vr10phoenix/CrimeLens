@@ -37,16 +37,98 @@ def run_query(query, params=None):
 
 
 # Overall Stats
-@app.get("/api/analytics/stats")
-def get_overall_stats():
-    stats = run_query("""
-        SELECT
-            (SELECT COUNT(*) FROM casemaster) as total_firs,
-            (SELECT COUNT(*) FROM accused) as total_accused,
-            (SELECT COUNT(*) FROM ext_gang) as total_gangs,
-            (SELECT COUNT(*) FROM ext_financialaccount) as total_accounts
-    """)
-    return stats[0]
+@app.get("/api/analytics/stats/enhanced")
+def enhanced_stats():
+    query = """
+    SELECT
+        (SELECT COUNT(*) FROM casemaster) AS total_firs,
+        (SELECT COUNT(*) FROM accused) AS total_accused,
+        (SELECT COUNT(*) FROM victim) AS total_victims,
+        (SELECT COUNT(*) FROM ext_gang) AS total_gangs,
+        (SELECT COUNT(*) FROM ext_financialaccount) AS total_accounts,
+        (SELECT COUNT(*) FROM ext_transaction) AS total_transactions,
+        (SELECT COUNT(*) FROM ext_phonecall) AS total_calls,
+        (SELECT COUNT(*) FROM casemaster WHERE casestatusid IN (2,3,5)) AS cases_closed,
+        ROUND(
+            (SELECT COUNT(*) FROM casemaster WHERE casestatusid IN (2,3,5)) * 100.0 /
+            NULLIF((SELECT COUNT(*) FROM casemaster), 0), 2
+        ) AS closure_rate_pct,
+        (SELECT ROUND(AVG(days_to_arrest)) FROM (
+            SELECT MIN(arrestsurrenderrdate) - cm.crimeregistereddate AS days_to_arrest
+            FROM casemaster cm
+            JOIN arrestsurrender ar ON cm.casemasterid = ar.casemasterid
+            GROUP BY cm.casemasterid
+        ) sub) AS avg_days_to_first_arrest
+    """
+    stats = run_query(query)[0]
+    return stats
+
+#Hourly Heatmap
+@app.get("/api/analytics/hourly_heatmap")
+def hourly_heatmap():
+    query = """
+     SELECT EXTRACT (HOUR FROM crimeregistereddate)::int AS hour:
+          COUNT(*) AS cases
+     FROM casemaster
+     GROUP BY hour
+     ORDER BY hour
+    """
+    return run_query(query)
+
+# Day - of week Trend
+@app.get("/api/analytics/day_of_week")
+def day_of_week():
+    query = """
+    SELECT TO_CHAR(crimeregistereddate, 'DAY') AS day_name,
+      COUNT(*) AS cases,
+      EXTRACTION(DOW FROM crimeregistereddate)::int AS dow_num
+      FROM casemaster
+      GROUP BY day_name , dow_num
+      ORDER BY dow_num
+
+    """
+    return run_query(query)
+
+# Month trend
+@app.get("/api/analytics/monthly_trend_extended")
+def monthly_trend_extended(years: int = 5):
+    query = """
+     SELECT TO_CHAR(crimeregistereddate,'YYYY-MM') AS month,
+         COUNT(*) AS cases
+     FROM casemaster
+     WHERE crimeregistereddate >= CURRENT_DATE - MAKE_INTERVAL(YEARS := :years)
+     GROUP BY month
+     ORDER BY month
+    """
+
+    return run_query(query,{"years" : years})
+
+@app.get("/api/analytics/district_crime_matrix")
+def district_crime_matrix(top_n: int = 5):
+    # Use a window function to rank crime types within each district
+    query = """
+    WITH crime_counts AS (
+        SELECT d.districtname,
+               ch.crimeheadname,
+               COUNT(*) AS cnt,
+               ROW_NUMBER() OVER (PARTITION BY d.districtid ORDER BY COUNT(*) DESC) AS rn
+        FROM casemaster cm
+        JOIN policestation ps ON cm.policestationid = ps.policestationid
+        JOIN district d ON ps.districtid = d.districtid
+        JOIN crimehead ch ON cm.crimemajorheadid = ch.crimeheadid
+        GROUP BY d.districtid, d.districtname, ch.crimeheadname
+    )
+    SELECT districtname,
+           json_agg(
+               json_build_object('crime', crimeheadname, 'count', cnt)
+               ORDER BY rn
+           ) AS top_crimes
+    FROM crime_counts
+    WHERE rn <= :top_n
+    GROUP BY districtname
+    ORDER BY districtname
+    """
+    return run_query(query, {"top_n": top_n})
 
 # District‑wise Crime Count
 @app.get("/api/analytics/district_crimes")
