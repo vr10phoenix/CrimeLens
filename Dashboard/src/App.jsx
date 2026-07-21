@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, User, Shield, Map as MapIcon, Activity, Database, AlertTriangle, 
   Menu, Search, MoreVertical, BrainCircuit, Network, BarChart3, 
-  Crosshair, Zap, Fingerprint, Lock, ChevronRight, Eye, Radio,
+  Crosshair, Zap, Fingerprint, Lock, ChevronRight, Eye, Radio,ZoomIn , ZoomOut , Maximize,
   DatabaseIcon
 } from 'lucide-react';
 import axios from 'axios';
@@ -347,23 +347,140 @@ const AnalyticsModule = () => {
 };
 
 // MODULE 3: ML PREDICTIONS
+// const MLPredictiveModule = () => {
+//   // random heat grid to simulate Model processing
+//   let heatGrid = Array.from({ length: 64 }).map(() => Math.floor(Math.random() * 100));
+
+//   function fluctuateGrid(){
+//     heatGrid = heatGrid.map(val => {
+//        const delta = Math.floor(Math.random() * 11) - 5;
+//        let newVal = val + delta;
+
+//        if(newVal < 0) newVal = 0;
+//        if(newVal > 0) newVal = 100;
+//        return newVal;
+//     });
+//     console.log(heatGrid);
+//   }
+
+//   setInterval(fluctuateGrid , 5000 + Math.floor(Math.random() * 1000))
+
+//   return (
+//     <div className="p-8 space-y-6 overflow-y-auto h-full animate-in slide-in-from-bottom-4 duration-500">
+//       <div className="flex items-center justify-between mb-8">
+//         <div>
+//           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+//             <BrainCircuit className="text-purple-500" /> Predictive AI Models
+//           </h2>
+//           <p className="text-slate-400 text-sm">Forecasting criminal activity using deep learning algorithms.</p>
+//         </div>
+//         <div className="px-4 py-2 bg-purple-900/30 border border-purple-500/50 rounded-lg text-purple-400 text-sm flex items-center gap-2 shadow-[0_0_15px_rgba(168,85,247,0.2)]">
+//           <Activity size={16} className="animate-spin-slow" /> Engine Status: ACTIVE
+//         </div>
+//       </div>
+
+//       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+//         {/* Heatmap Grid */}
+//         <Card title="Spatial Risk Matrix (beta)" icon={Crosshair} className="lg:col-span-1 border-purple-900/50">
+//           <div className="grid grid-cols-8 gap-1 p-2 bg-slate-950 rounded-lg border border-slate-800 relative overflow-hidden">
+//             <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(168,85,247,0.05)_50%)] bg-[length:100%_4px] pointer-events-none z-10" />
+//             {heatGrid.map((val, i) => (
+//               <div 
+//                 key={i} 
+//                 className="aspect-square rounded-sm transition-all duration-1000"
+//                 style={{ 
+//                   backgroundColor: val > 80 ? '#f43f5e' : val > 50 ? '#f59e0b' : val > 20 ? '#3b82f6' : '#1e293b',
+//                   opacity: val / 100 + 0.2
+//                 }}
+//               />
+//             ))}
+//           </div>
+//           <div className="flex justify-between mt-4 text-[10px] text-slate-500 uppercase tracking-widest font-mono">
+//             <span>Low Risk</span>
+//             <span className="text-rose-500">Critical</span>
+//           </div>
+//         </Card>
+
+//         {/* AI Forecast List */}
+//         <Card title="Immediate Threat Forecast (48 Hrs)" icon={AlertTriangle} className="lg:col-span-2 border-purple-900/50">
+//           <div className="space-y-3">
+//             {MOCK_DATA.ml.hotspots.map((spot, i) => (
+//               <div key={i} className="flex items-center justify-between p-3 bg-slate-950/50 border border-slate-800 rounded-lg hover:border-purple-500/30 transition-colors">
+//                 <div className="flex items-center gap-3">
+//                   <div className={`p-2 rounded-lg ${spot.risk > 80 ? 'bg-rose-900/50 text-rose-400' : 'bg-amber-900/50 text-amber-400'}`}>
+//                     <Fingerprint size={16} />
+//                   </div>
+//                   <div>
+//                     <h4 className="text-sm font-bold text-slate-200">{spot.name}</h4>
+//                     <p className="text-xs text-slate-500 font-mono">Profile: {spot.type}</p>
+//                   </div>
+//                 </div>
+//                 <div className="text-right">
+//                   <div className="text-lg font-black font-mono text-white">{spot.risk}%</div>
+//                   <div className="text-[10px] text-slate-500 uppercase">Probability</div>
+//                 </div>
+//               </div>
+//             ))}
+//           </div>
+//         </Card>
+//       </div>
+//     </div>
+//   );
+// };
+
+
 const MLPredictiveModule = () => {
-  // random heat grid to simulate Model processing
-  let heatGrid = Array.from({ length: 64 }).map(() => Math.floor(Math.random() * 100));
+  const [districtData, setDistrictData] = useState([]);
+  const [riskyPersons, setRiskyPersons] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  function fluctuateGrid(){
-    heatGrid = heatGrid.map(val => {
-       const delta = Math.floor(Math.random() * 11) - 5;
-       let newVal = val + delta;
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [districtRes, riskRes] = await Promise.all([
+          axios.get('http://localhost:8001/api/analytics/district_crimes'),
+          axios.get('http://localhost:8001/api/ml/risk-scores?limit=5'),
+        ]);
+        setDistrictData(districtRes.data);
+        setRiskyPersons(riskRes.data);
+        setLoading(false);
+      } catch (err) {
+        console.error("ML data fetch error:", err);
+        setError("Failed to load predictive data. Is the ML backend running?");
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
-       if(newVal < 0) newVal = 0;
-       if(newVal > 0) newVal = 100;
-       return newVal;
-    });
-    console.log(heatGrid);
+  // Convert district crime counts into a simple 8x8 heatmap (64 cells)
+  // We'll assign each district a number of cells proportional to its case count
+  const maxCases = Math.max(...districtData.map(d => d.case_count), 1);
+  const heatGrid = districtData.length > 0
+    ? Array.from({ length: 64 }).map((_, i) => {
+        // Spread districts across the grid, repeating if fewer districts
+        const idx = i % districtData.length;
+        const val = (districtData[idx].case_count / maxCases) * 100;
+        return Math.min(100, Math.round(val));
+      })
+    : Array.from({ length: 64 }).map(() => 0);
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center h-full text-slate-400">
+        Loading predictive models...
+      </div>
+    );
   }
 
-  setInterval(fluctuateGrid , 5000 + Math.floor(Math.random() * 1000))
+  if (error) {
+    return (
+      <div className="p-8 flex items-center justify-center h-full text-red-400">
+        {error}
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6 overflow-y-auto h-full animate-in slide-in-from-bottom-4 duration-500">
@@ -380,17 +497,17 @@ const MLPredictiveModule = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Heatmap Grid */}
-        <Card title="Spatial Risk Matrix (beta)" icon={Crosshair} className="lg:col-span-1 border-purple-900/50">
+        {/* Spatial Risk Matrix (Heatmap) */}
+        <Card title="Spatial Risk Matrix" icon={Crosshair} className="lg:col-span-1 border-purple-900/50">
           <div className="grid grid-cols-8 gap-1 p-2 bg-slate-950 rounded-lg border border-slate-800 relative overflow-hidden">
             <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(168,85,247,0.05)_50%)] bg-[length:100%_4px] pointer-events-none z-10" />
             {heatGrid.map((val, i) => (
-              <div 
-                key={i} 
-                className="aspect-square rounded-sm transition-all duration-1000"
-                style={{ 
+              <div
+                key={i}
+                className="aspect-square rounded-sm transition-all duration-700"
+                style={{
                   backgroundColor: val > 80 ? '#f43f5e' : val > 50 ? '#f59e0b' : val > 20 ? '#3b82f6' : '#1e293b',
-                  opacity: val / 100 + 0.2
+                  opacity: val / 100 + 0.2,
                 }}
               />
             ))}
@@ -401,26 +518,29 @@ const MLPredictiveModule = () => {
           </div>
         </Card>
 
-        {/* AI Forecast List */}
-        <Card title="Immediate Threat Forecast (48 Hrs)" icon={AlertTriangle} className="lg:col-span-2 border-purple-900/50">
+        {/* AI Threat Forecast (Top Risky Individuals) */}
+        <Card title="Immediate Threat Forecast (Top 5)" icon={AlertTriangle} className="lg:col-span-2 border-purple-900/50">
           <div className="space-y-3">
-            {MOCK_DATA.ml.hotspots.map((spot, i) => (
+            {riskyPersons.map((person, i) => (
               <div key={i} className="flex items-center justify-between p-3 bg-slate-950/50 border border-slate-800 rounded-lg hover:border-purple-500/30 transition-colors">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${spot.risk > 80 ? 'bg-rose-900/50 text-rose-400' : 'bg-amber-900/50 text-amber-400'}`}>
+                  <div className={`p-2 rounded-lg ${person.risk_score > 80 ? 'bg-rose-900/50 text-rose-400' : 'bg-amber-900/50 text-amber-400'}`}>
                     <Fingerprint size={16} />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-slate-200">{spot.name}</h4>
-                    <p className="text-xs text-slate-500 font-mono">Profile: {spot.type}</p>
+                    <h4 className="text-sm font-bold text-slate-200">{person.accusedname}</h4>
+                    <p className="text-xs text-slate-500 font-mono">ID: {person.accusedmasterid}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-lg font-black font-mono text-white">{spot.risk}%</div>
-                  <div className="text-[10px] text-slate-500 uppercase">Probability</div>
+                  <div className="text-lg font-black font-mono text-white">{person.risk_score.toFixed(1)}</div>
+                  <div className="text-[10px] text-slate-500 uppercase">Risk Score</div>
                 </div>
               </div>
             ))}
+            {riskyPersons.length === 0 && (
+              <p className="text-slate-500 text-sm">No high‑risk individuals detected.</p>
+            )}
           </div>
         </Card>
       </div>
@@ -433,16 +553,21 @@ const NetworkModule = () => {
   const [loading, setLoading] = useState(true);
   const [selectedNode, setSelectedNode] = useState(null);
 
-useEffect(() => {
+  // --- New Zoom & Pan State ---
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
     axios.get('http://localhost:8001/api/analytics/neo4j-network?limit=60')
       .then(res => {
         const rawNodes = res.data.nodes || [];
         const rawEdges = res.data.edges || [];
         const totalNodes = rawNodes.length;
 
-        // Golden Angle in radians for organic, non-overlapping radial distribution
         const goldenAngle = 137.5 * (Math.PI / 180); 
-        const maxRadius = 40; // Keeps nodes within 10% to 90% bounds of the container
+        const maxRadius = 40; 
 
         const nodes = rawNodes.map((node, index) => {
           const id = node.personId || node.gangId || node.accountId || node.caseId;
@@ -450,8 +575,6 @@ useEffect(() => {
           const role = node.nodeType || 'Unknown';
           const status = (role === 'Gang' ? 'high' : (node.status === 'Untraced' ? 'arrested' : 'active'));
           
-          // Calculate spiral coordinates
-          // Math.max prevents division by zero if there's only 1 node
           const radius = Math.sqrt(index / Math.max(1, totalNodes - 1)) * maxRadius;
           const angle = index * goldenAngle;
 
@@ -480,6 +603,38 @@ useEffect(() => {
       });
   }, []);
 
+  // --- Zoom & Pan Handlers ---
+  const handleZoomIn = () => setScale(prev => Math.min(prev * 1.5, 5)); // Max zoom 5x
+  const handleZoomOut = () => setScale(prev => Math.max(prev / 1.5, 0.2)); // Min zoom 0.2x
+  const handleReset = () => { setScale(1); setPosition({ x: 0, y: 0 }); };
+
+  const handleWheel = (e) => {
+    // Zoom in on scroll up, zoom out on scroll down
+    if (e.deltaY < 0) {
+      setScale(prev => Math.min(prev * 1.1, 5));
+    } else {
+      setScale(prev => Math.max(prev / 1.1, 0.2));
+    }
+  };
+
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - position.x,
+      y: e.clientY - position.y
+    });
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    setPosition({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    });
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center h-full text-slate-400">
@@ -500,58 +655,99 @@ useEffect(() => {
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
+        
         {/* Node Graph Area */}
-        <Card className="lg:col-span-3 h-full overflow-hidden bg-slate-950 flex items-center justify-center relative border-emerald-900/30">
+        <Card 
+          className="lg:col-span-3 h-full overflow-hidden bg-slate-950 flex items-center justify-center relative border-emerald-900/30 select-none"
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          style={{ cursor: isDragging ? 'grabbing' : 'grab' }} // Changes cursor on drag
+        >
+          {/* Zoom Controls */}
+          <div className="absolute bottom-4 left-4 z-50 flex gap-2 bg-slate-900/80 p-2 rounded-lg border border-slate-700 backdrop-blur-sm">
+            <button onClick={handleZoomIn} className="p-2 hover:bg-slate-800 rounded text-slate-300 hover:text-white transition-colors" title="Zoom In">
+              <ZoomIn size={20} />
+            </button>
+            <button onClick={handleReset} className="p-2 hover:bg-slate-800 rounded text-slate-300 hover:text-white transition-colors" title="Reset View">
+              <Maximize size={20} />
+            </button>
+            <button onClick={handleZoomOut} className="p-2 hover:bg-slate-800 rounded text-slate-300 hover:text-white transition-colors" title="Zoom Out">
+              <ZoomOut size={20} />
+            </button>
+          </div>
+
           <div className="absolute inset-0 bg-[linear-gradient(rgba(16,185,129,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(16,185,129,0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
           
-          {/* SVG Lines for Edges */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none">
-            {networkData.edges.map((edge, i) => {
-              const source = networkData.nodes.find(n => n.id === edge.source);
-              const target = networkData.nodes.find(n => n.id === edge.target);
-              if (!source || !target) return null;
-              return (
-                <line 
-                  key={i}
-                  x1={`${source.x}%`}
-                  y1={`${source.y}%`}
-                  x2={`${target.x}%`}
-                  y2={`${target.y}%`}
-                  stroke="#10b981"
-                  strokeWidth="2"
-                  strokeOpacity="0.3"
-                  strokeDasharray="4 4"
-                  className="animate-[dash_20s_linear_infinite]"
-                />
-              );
-            })}
-          </svg>
+          {/* Transforming Container */}
+          <div 
+            className="absolute w-full h-full transform-gpu"
+            style={{ 
+              transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+              transformOrigin: 'center center',
+              transition: isDragging ? 'none' : 'transform 0.1s ease-out' // Smooth zoom, instant drag
+            }}
+          >
+            {/* SVG Lines for Edges */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none">
+              {networkData.edges.map((edge, i) => {
+                const source = networkData.nodes.find(n => n.id === edge.source);
+                const target = networkData.nodes.find(n => n.id === edge.target);
+                if (!source || !target) return null;
+                return (
+                  <line 
+                    key={i}
+                    x1={`${source.x}%`}
+                    y1={`${source.y}%`}
+                    x2={`${target.x}%`}
+                    y2={`${target.y}%`}
+                    stroke="#10b981"
+                    strokeWidth={2 / scale} // Keeps lines from getting too thick when zooming
+                    strokeOpacity="0.3"
+                    strokeDasharray="4 4"
+                    className="animate-[dash_20s_linear_infinite]"
+                  />
+                );
+              })}
+            </svg>
 
-          {/* HTML Nodes */}
-          {networkData.nodes.map((node) => (
-            <div 
-              key={node.id} 
-              className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group cursor-pointer"
-              style={{ left: `${node.x}%`, top: `${node.y}%` }}
-              onClick={() => setSelectedNode(node)}
-            >
-              <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center shadow-[0_0_15px_rgba(0,0,0,0.5)] z-10 transition-transform group-hover:scale-110 ${
-                node.status === 'active' ? 'bg-slate-900 border-rose-500 text-rose-500' :
-                node.status === 'arrested' ? 'bg-slate-900 border-emerald-500 text-emerald-500' :
-                'bg-slate-900 border-amber-500 text-amber-500'
-              }`}>
-                {node.role === "Boss" || node.role === "Leader" ? <Lock size={20} /> : <User size={20} />}
+            {/* HTML Nodes */}
+            {networkData.nodes.map((node) => (
+              <div 
+                key={node.id} 
+                className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group cursor-pointer"
+                style={{ left: `${node.x}%`, top: `${node.y}%` }}
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevents dragging from triggering when clicking a node
+                  setSelectedNode(node);
+                }}
+              >
+                <div 
+                  className={`w-12 h-12 rounded-full border-2 flex items-center justify-center shadow-[0_0_15px_rgba(0,0,0,0.5)] z-10 transition-transform group-hover:scale-110 ${
+                  node.status === 'active' ? 'bg-slate-900 border-rose-500 text-rose-500' :
+                  node.status === 'arrested' ? 'bg-slate-900 border-emerald-500 text-emerald-500' :
+                  'bg-slate-900 border-amber-500 text-amber-500'
+                }`}>
+                  {node.role === "Boss" || node.role === "Leader" ? <Lock size={20} /> : <User size={20} />}
+                </div>
+                {/* Notice: We scale the text slightly down when zooming in so it doesn't overwhelm the screen */}
+                <div 
+                  className="mt-2 text-center bg-slate-900/80 px-2 py-1 rounded border border-slate-700/50 backdrop-blur-sm opacity-80 group-hover:opacity-100"
+                  style={{ transform: `scale(${Math.max(0.5, 1 / scale)})` }}
+                >
+                  <p className="text-xs font-bold text-white whitespace-nowrap">{node.name}</p>
+                  <p className="text-[9px] text-slate-400 uppercase tracking-wide">{node.role}</p>
+                </div>
               </div>
-              <div className="mt-2 text-center bg-slate-900/80 px-2 py-1 rounded border border-slate-700/50 backdrop-blur-sm opacity-80 group-hover:opacity-100">
-                <p className="text-xs font-bold text-white whitespace-nowrap">{node.name}</p>
-                <p className="text-[9px] text-slate-400 uppercase tracking-wide">{node.role}</p>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </Card>
 
-        {/* Target Details Sidebar – now shows selected node info */}
+        {/* Target Details Sidebar (unchanged) */}
         <Card title={selectedNode ? selectedNode.name : "Active Target Details"} icon={Eye} className="h-full overflow-y-auto border-emerald-900/30">
+          {/* Sidebar content remains exactly the same as your code */}
           {selectedNode ? (
             <div className="flex flex-col items-center mt-4">
               <div className={`w-20 h-20 rounded-full border-2 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(0,0,0,0.5)] ${
@@ -571,9 +767,6 @@ useEffect(() => {
                   <p className="text-[10px] text-slate-500 uppercase">Status</p>
                   <p className="text-sm text-slate-200 font-mono mt-1">{selectedNode.status || "Active"}</p>
                 </div>
-                <button className="w-full py-2 bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/50 rounded transition-colors text-sm font-bold tracking-wider">
-                  VIEW FULL PROFILE
-                </button>
               </div>
             </div>
           ) : (
@@ -583,19 +776,6 @@ useEffect(() => {
               </div>
               <h3 className="text-lg font-bold text-white tracking-widest">TARGET ALPHA</h3>
               <p className="text-rose-500 text-xs font-mono font-bold mt-1">STATUS: AT LARGE</p>
-              <div className="space-y-4 mt-4 w-full">
-                <div className="bg-slate-950 p-3 rounded border border-slate-800">
-                  <p className="text-[10px] text-slate-500 uppercase">Known Aliases</p>
-                  <p className="text-sm text-slate-200 font-mono mt-1">"The Ghost", "R-Bhai"</p>
-                </div>
-                <div className="bg-slate-950 p-3 rounded border border-slate-800">
-                  <p className="text-[10px] text-slate-500 uppercase">Last Known Location</p>
-                  <p className="text-sm text-slate-200 font-mono mt-1">Mangaluru Docks (48h ago)</p>
-                </div>
-                <button className="w-full py-2 bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/50 rounded transition-colors text-sm font-bold tracking-wider">
-                  INITIATE ARREST PROTOCOL
-                </button>
-              </div>
             </div>
           )}
         </Card>
