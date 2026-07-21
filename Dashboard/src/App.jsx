@@ -3,7 +3,7 @@ import {
   Send, User, Shield, Map as MapIcon, Activity, Database, AlertTriangle, 
   Menu, Search, MoreVertical, BrainCircuit, Network, BarChart3, 
   Crosshair, Zap, Fingerprint, Lock, ChevronRight, Eye, Radio,ZoomIn , ZoomOut , Maximize,
-  DatabaseIcon
+  DatabaseIcon , ShieldAlert
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -553,21 +553,35 @@ const NetworkModule = () => {
   const [loading, setLoading] = useState(true);
   const [selectedNode, setSelectedNode] = useState(null);
 
-  // --- New Zoom & Pan State ---
-  const [scale, setScale] = useState(1);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  // --- VIRTUAL CANVAS STATE ---
+  const [scale, setScale] = useState(0.8); // Start slightly zoomed out
+  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  
+  // Track dragging accurately
+  const dragStart = useRef({ x: 0, y: 0 });
+  const canvasRef = useRef(null);
+
+  // A massive virtual canvas gives nodes room to spread out without getting cut off
+  const CANVAS_SIZE = 4000; 
+  const CENTER = CANVAS_SIZE / 2;
 
   useEffect(() => {
-    axios.get('http://localhost:8001/api/analytics/neo4j-network?limit=60')
+    axios.get('http://localhost:8001/api/analytics/neo4j-network?limit=80')
       .then(res => {
-        const rawNodes = res.data.nodes || [];
+        let rawNodes = res.data.nodes || [];
         const rawEdges = res.data.edges || [];
-        const totalNodes = rawNodes.length;
 
+        // 1. Sort nodes so Bosses/Leaders are plotted first (in the exact center)
+        rawNodes.sort((a, b) => {
+          const aPriority = (a.nodeType === 'Boss' || a.nodeType === 'Leader') ? 1 : 0;
+          const bPriority = (b.nodeType === 'Boss' || b.nodeType === 'Leader') ? 1 : 0;
+          return bPriority - aPriority;
+        });
+
+        const totalNodes = rawNodes.length;
         const goldenAngle = 137.5 * (Math.PI / 180); 
-        const maxRadius = 40; 
+        const maxRadius = 1200; // Wide spread to prevent overlapping
 
         const nodes = rawNodes.map((node, index) => {
           const id = node.personId || node.gangId || node.accountId || node.caseId;
@@ -575,26 +589,19 @@ const NetworkModule = () => {
           const role = node.nodeType || 'Unknown';
           const status = (role === 'Gang' ? 'high' : (node.status === 'Untraced' ? 'arrested' : 'active'));
           
-          const radius = Math.sqrt(index / Math.max(1, totalNodes - 1)) * maxRadius;
+          // 2. Center the first node (Boss), spiral the rest outwards
+          const radius = index === 0 ? 0 : 80 + Math.sqrt(index / Math.max(1, totalNodes - 1)) * maxRadius;
           const angle = index * goldenAngle;
 
           return {
-            id: id,
-            name: name,
-            role: role,
-            status: status,
-            x: 50 + radius * Math.cos(angle),
-            y: 50 + radius * Math.sin(angle)
+            id, name, role, status,
+            // Calculate absolute pixel coordinates on the 4000x4000 canvas
+            x: CENTER + radius * Math.cos(angle),
+            y: CENTER + radius * Math.sin(angle)
           };
         });
 
-        const edges = rawEdges.map(edge => ({
-          source: edge.source,
-          target: edge.target,
-          type: edge.type
-        }));
-
-        setNetworkData({ nodes, edges });
+        setNetworkData({ nodes, edges: rawEdges });
         setLoading(false);
       })
       .catch(err => {
@@ -603,182 +610,191 @@ const NetworkModule = () => {
       });
   }, []);
 
-  // --- Zoom & Pan Handlers ---
-  const handleZoomIn = () => setScale(prev => Math.min(prev * 1.5, 5)); // Max zoom 5x
-  const handleZoomOut = () => setScale(prev => Math.max(prev / 1.5, 0.2)); // Min zoom 0.2x
-  const handleReset = () => { setScale(1); setPosition({ x: 0, y: 0 }); };
-
+  // --- PAN & ZOOM LOGIC ---
   const handleWheel = (e) => {
-    // Zoom in on scroll up, zoom out on scroll down
-    if (e.deltaY < 0) {
-      setScale(prev => Math.min(prev * 1.1, 5));
-    } else {
-      setScale(prev => Math.max(prev / 1.1, 0.2));
-    }
+    e.preventDefault();
+    const zoomFactor = 0.1;
+    if (e.deltaY < 0) setScale(s => Math.min(s + zoomFactor, 3));
+    else setScale(s => Math.max(s - zoomFactor, 0.2));
   };
 
   const handleMouseDown = (e) => {
     setIsDragging(true);
-    setDragStart({
-      x: e.clientX - position.x,
-      y: e.clientY - position.y
-    });
+    dragStart.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
   };
 
   const handleMouseMove = (e) => {
     if (!isDragging) return;
-    setPosition({
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y
+    setPan({
+      x: e.clientX - dragStart.current.x,
+      y: e.clientY - dragStart.current.y
     });
   };
 
   const handleMouseUp = () => setIsDragging(false);
+  const resetView = () => { setScale(0.8); setPan({ x: 0, y: 0 }); };
 
-  if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center h-full text-slate-400">
-        Loading network data...
-      </div>
-    );
-  }
+  // Utility to shorten long FIR names so they don't cover the screen
+  const formatNodeName = (name, role) => {
+    if (role === 'Case' && name.length > 20) {
+      const parts = name.split('/');
+      return parts.length > 2 ? `${parts[2]}...${parts[parts.length-1]}` : name.substring(0, 15) + '...';
+    }
+    return name;
+  };
+
+  if (loading) return <div className="p-8 text-slate-400 flex justify-center">Initializing Network Graph...</div>;
 
   return (
-    <div className="p-8 space-y-6 h-full flex flex-col animate-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center justify-between mb-4">
+    <div className="p-8 space-y-6 h-full flex flex-col animate-in fade-in duration-500">
+      <div className="flex items-center justify-between mb-2">
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
             <Network className="text-emerald-500" /> Syndicate Mapping
           </h2>
-          <p className="text-slate-400 text-sm">Known associates, hierarchies, and shell corp connections.</p>
+          <p className="text-slate-400 text-sm">Visualizing hierarchy, shell corps, and known associates.</p>
         </div>
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
         
-        {/* Node Graph Area */}
-        <Card 
-          className="lg:col-span-3 h-full overflow-hidden bg-slate-950 flex items-center justify-center relative border-emerald-900/30 select-none"
-          onWheel={handleWheel}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          style={{ cursor: isDragging ? 'grabbing' : 'grab' }} // Changes cursor on drag
-        >
-          {/* Zoom Controls */}
-          <div className="absolute bottom-4 left-4 z-50 flex gap-2 bg-slate-900/80 p-2 rounded-lg border border-slate-700 backdrop-blur-sm">
-            <button onClick={handleZoomIn} className="p-2 hover:bg-slate-800 rounded text-slate-300 hover:text-white transition-colors" title="Zoom In">
+        {/* NETWORK GRAPH AREA */}
+        <Card className="lg:col-span-3 h-full relative overflow-hidden bg-slate-950 border-emerald-900/30">
+          
+          {/* Zoom/Pan Controls */}
+          <div className="absolute bottom-6 left-6 z-50 flex gap-2 bg-slate-900/90 p-2 rounded-lg border border-slate-700 shadow-xl backdrop-blur-md">
+            <button onClick={() => setScale(s => Math.min(s + 0.2, 3))} className="p-2 hover:bg-slate-800 rounded text-slate-300 hover:text-white">
               <ZoomIn size={20} />
             </button>
-            <button onClick={handleReset} className="p-2 hover:bg-slate-800 rounded text-slate-300 hover:text-white transition-colors" title="Reset View">
+            <button onClick={resetView} className="p-2 hover:bg-slate-800 rounded text-slate-300 hover:text-white">
               <Maximize size={20} />
             </button>
-            <button onClick={handleZoomOut} className="p-2 hover:bg-slate-800 rounded text-slate-300 hover:text-white transition-colors" title="Zoom Out">
+            <button onClick={() => setScale(s => Math.max(s - 0.2, 0.2))} className="p-2 hover:bg-slate-800 rounded text-slate-300 hover:text-white">
               <ZoomOut size={20} />
             </button>
           </div>
 
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(16,185,129,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(16,185,129,0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
-          
-          {/* Transforming Container */}
+          {/* Graph Viewport */}
           <div 
-            className="absolute w-full h-full transform-gpu"
-            style={{ 
-              transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-              transformOrigin: 'center center',
-              transition: isDragging ? 'none' : 'transform 0.1s ease-out' // Smooth zoom, instant drag
-            }}
+            ref={canvasRef}
+            className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing select-none"
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
           >
-            {/* SVG Lines for Edges */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none">
-              {networkData.edges.map((edge, i) => {
-                const source = networkData.nodes.find(n => n.id === edge.source);
-                const target = networkData.nodes.find(n => n.id === edge.target);
-                if (!source || !target) return null;
+            {/* VIRTUAL CANVAS WRAPPER */}
+            <div 
+              className="absolute left-1/2 top-1/2"
+              style={{
+                width: CANVAS_SIZE,
+                height: CANVAS_SIZE,
+                // Center the canvas, then apply pan and scale
+                transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+                transformOrigin: 'center center',
+                transition: isDragging ? 'none' : 'transform 0.1s ease-out'
+              }}
+            >
+              {/* 1. Edges Layer (SVG) */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                {networkData.edges.map((edge, i) => {
+                  const source = networkData.nodes.find(n => n.id === edge.source);
+                  const target = networkData.nodes.find(n => n.id === edge.target);
+                  if (!source || !target) return null;
+                  return (
+                    <line 
+                      key={i}
+                      x1={source.x} y1={source.y}
+                      x2={target.x} y2={target.y}
+                      stroke="#10b981"
+                      strokeWidth={2 / scale} // Prevents thick lines when zooming in
+                      strokeOpacity="0.4"
+                      strokeDasharray="6 6"
+                      className="animate-[dash_30s_linear_infinite]"
+                    />
+                  );
+                })}
+              </svg>
+
+              {/* 2. Nodes Layer (HTML) */}
+              {networkData.nodes.map((node) => {
+                const isBoss = node.role === 'Boss' || node.role === 'Leader';
+                const isCase = node.role === 'Case';
+                
                 return (
-                  <line 
-                    key={i}
-                    x1={`${source.x}%`}
-                    y1={`${source.y}%`}
-                    x2={`${target.x}%`}
-                    y2={`${target.y}%`}
-                    stroke="#10b981"
-                    strokeWidth={2 / scale} // Keeps lines from getting too thick when zooming
-                    strokeOpacity="0.3"
-                    strokeDasharray="4 4"
-                    className="animate-[dash_20s_linear_infinite]"
-                  />
+                  <div 
+                    key={node.id} 
+                    className="absolute flex flex-col items-center group cursor-pointer"
+                    // Position based on virtual canvas coordinates
+                    style={{ left: node.x, top: node.y, transform: 'translate(-50%, -50%)' }}
+                    onClick={(e) => { e.stopPropagation(); setSelectedNode(node); }}
+                  >
+                    {/* Node Avatar */}
+                    <div className={`rounded-full border-2 flex items-center justify-center z-10 transition-transform group-hover:scale-125 shadow-[0_0_20px_rgba(0,0,0,0.8)] ${
+                      isBoss ? 'w-16 h-16 bg-slate-900 border-rose-500 text-rose-500' :
+                      isCase ? 'w-10 h-10 bg-slate-900 border-indigo-500 text-indigo-500' :
+                      node.status === 'arrested' ? 'w-12 h-12 bg-slate-900 border-emerald-500 text-emerald-500' :
+                      'w-12 h-12 bg-slate-900 border-amber-500 text-amber-500'
+                    }`}>
+                      {isBoss ? <ShieldAlert size={28} /> : isCase ? <Network size={20} /> : <User size={20} />}
+                    </div>
+                    
+                    {/* Node Label (Scales down slightly when zooming in heavily) */}
+                    <div 
+                      className="mt-2 text-center bg-slate-950/90 px-3 py-1.5 rounded-md border border-slate-700/50 backdrop-blur-md opacity-80 group-hover:opacity-100 group-hover:z-50 transition-opacity whitespace-nowrap"
+                      style={{ transform: `scale(${Math.max(0.6, 1 / scale)})`, transformOrigin: 'top center' }}
+                    >
+                      <p className="text-xs font-bold text-white">{formatNodeName(node.name, node.role)}</p>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider">{node.role}</p>
+                    </div>
+                  </div>
                 );
               })}
-            </svg>
-
-            {/* HTML Nodes */}
-            {networkData.nodes.map((node) => (
-              <div 
-                key={node.id} 
-                className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group cursor-pointer"
-                style={{ left: `${node.x}%`, top: `${node.y}%` }}
-                onClick={(e) => {
-                  e.stopPropagation(); // Prevents dragging from triggering when clicking a node
-                  setSelectedNode(node);
-                }}
-              >
-                <div 
-                  className={`w-12 h-12 rounded-full border-2 flex items-center justify-center shadow-[0_0_15px_rgba(0,0,0,0.5)] z-10 transition-transform group-hover:scale-110 ${
-                  node.status === 'active' ? 'bg-slate-900 border-rose-500 text-rose-500' :
-                  node.status === 'arrested' ? 'bg-slate-900 border-emerald-500 text-emerald-500' :
-                  'bg-slate-900 border-amber-500 text-amber-500'
-                }`}>
-                  {node.role === "Boss" || node.role === "Leader" ? <Lock size={20} /> : <User size={20} />}
-                </div>
-                {/* Notice: We scale the text slightly down when zooming in so it doesn't overwhelm the screen */}
-                <div 
-                  className="mt-2 text-center bg-slate-900/80 px-2 py-1 rounded border border-slate-700/50 backdrop-blur-sm opacity-80 group-hover:opacity-100"
-                  style={{ transform: `scale(${Math.max(0.5, 1 / scale)})` }}
-                >
-                  <p className="text-xs font-bold text-white whitespace-nowrap">{node.name}</p>
-                  <p className="text-[9px] text-slate-400 uppercase tracking-wide">{node.role}</p>
-                </div>
-              </div>
-            ))}
+            </div>
           </div>
         </Card>
 
-        {/* Target Details Sidebar (unchanged) */}
-        <Card title={selectedNode ? selectedNode.name : "Active Target Details"} icon={Eye} className="h-full overflow-y-auto border-emerald-900/30">
-          {/* Sidebar content remains exactly the same as your code */}
-          {selectedNode ? (
-            <div className="flex flex-col items-center mt-4">
-              <div className={`w-20 h-20 rounded-full border-2 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(0,0,0,0.5)] ${
-                selectedNode.status === 'active' ? 'bg-slate-900 border-rose-500 text-rose-500' :
-                'bg-slate-900 border-amber-500 text-amber-500'
-              }`}>
-                <User size={32} />
-              </div>
-              <h3 className="text-lg font-bold text-white tracking-widest">{selectedNode.name}</h3>
-              <p className="text-rose-500 text-xs font-mono font-bold mt-1">ID: {selectedNode.id}</p>
-              <div className="space-y-4 mt-6 w-full">
-                <div className="bg-slate-950 p-3 rounded border border-slate-800">
-                  <p className="text-[10px] text-slate-500 uppercase">Role</p>
-                  <p className="text-sm text-slate-200 font-mono mt-1">{selectedNode.role || "Unknown"}</p>
+        {/* SIDEBAR: TARGET DETAILS */}
+        <Card title="Intel Profile" icon={Eye} className="h-full border-emerald-900/30 overflow-hidden flex flex-col">
+          <div className="p-4 flex-1 overflow-y-auto">
+            {selectedNode ? (
+              <div className="flex flex-col items-center animate-in slide-in-from-right-4">
+                <div className={`w-24 h-24 rounded-full border-4 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(0,0,0,0.5)] ${
+                  selectedNode.status === 'active' || selectedNode.role === 'Boss' ? 'bg-slate-900 border-rose-500 text-rose-500 shadow-rose-900/20' :
+                  selectedNode.role === 'Case' ? 'bg-slate-900 border-indigo-500 text-indigo-500 shadow-indigo-900/20' :
+                  'bg-slate-900 border-amber-500 text-amber-500'
+                }`}>
+                  {selectedNode.role === "Boss" ? <ShieldAlert size={40} /> : selectedNode.role === "Case" ? <Network size={40} /> : <User size={40} />}
                 </div>
-                <div className="bg-slate-950 p-3 rounded border border-slate-800">
-                  <p className="text-[10px] text-slate-500 uppercase">Status</p>
-                  <p className="text-sm text-slate-200 font-mono mt-1">{selectedNode.status || "Active"}</p>
+                
+                <h3 className="text-xl font-black text-white text-center break-words w-full">{selectedNode.name}</h3>
+                <p className="text-emerald-500 text-xs font-mono font-bold mt-2 bg-emerald-950/30 px-3 py-1 rounded-full border border-emerald-500/20">
+                  ID: {selectedNode.id.substring(0, 12)}...
+                </p>
+                
+                <div className="space-y-3 mt-8 w-full">
+                  <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-800">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Classification</p>
+                    <p className="text-sm text-slate-200 mt-1">{selectedNode.role || "Unknown Associate"}</p>
+                  </div>
+                  <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-800">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Current Status</p>
+                    <p className="text-sm text-slate-200 mt-1 uppercase">
+                      {selectedNode.status === 'high' ? 'High Priority' : selectedNode.status}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center mb-6 mt-4">
-              <div className="w-20 h-20 bg-rose-950 border border-rose-500 rounded-full flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(244,63,94,0.2)]">
-                <User size={32} className="text-rose-500" />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-500 mt-10">
+                <Network size={48} className="mb-4 opacity-20" />
+                <p className="text-sm text-center">Select a node on the map to<br/>view detailed intelligence.</p>
               </div>
-              <h3 className="text-lg font-bold text-white tracking-widest">TARGET ALPHA</h3>
-              <p className="text-rose-500 text-xs font-mono font-bold mt-1">STATUS: AT LARGE</p>
-            </div>
-          )}
+            )}
+          </div>
         </Card>
+
       </div>
     </div>
   );
