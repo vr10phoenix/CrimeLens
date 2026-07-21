@@ -5,7 +5,7 @@ import joblib
 df = pd.read_csv('monthly_crimes.csv')
 df['ds'] = pd.to_datetime(df['ds'])
 
-model = Prophet(yearly_seasonality = True , weekly_seasonlity = False)
+model = Prophet(yearly_seasonality = True , weekly_seasonality = False)
 model.fit(df)
 
 joblib.dump(model , 'forecsat_model.pkl')
