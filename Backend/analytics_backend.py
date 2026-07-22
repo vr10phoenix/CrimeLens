@@ -130,6 +130,94 @@ def district_crime_matrix(top_n: int = 5):
     """
     return run_query(query, {"top_n": top_n})
 
+
+# crime_severity_index
+@app.get("/api/analytics/crime_severity_index")
+def crime_severity_index():
+  query = """
+    SELECT d.districtname,
+           COUNT(*) AS total_cases,
+           SUM(CASE WHEN g.offencetype = 'Heinous' THEN 1 ELSE 0 END) AS heinous_count,
+           ROUND(100.0 * SUM(CASE WHEN g.offencetype = 'Heinous' THEN 1 ELSE 0 END) / COUNT(*), 2) AS heinous_pct
+    FROM casemaster cm
+    JOIN gravityoffence g ON cm.gravityoffenceid = g.gravityoffenceid
+    JOIN policestation ps ON cm.policestationid = ps.policestationid
+    JOIN district d ON ps.districtid = d.districtid
+    GROUP BY d.districtname
+    ORDER BY heinous_pct DESC
+   """
+  return run_query(query)
+
+#repeat_offenders
+@app.get("/api/analytics/repeat_offenders")
+def repeat_offenders(top_n: int = 10):
+    query = """
+    SELECT a.accusedname,
+           COUNT(DISTINCT a.casemasterid) AS case_count,
+           a.ageyear,
+           CASE a.genderid
+               WHEN 1 THEN 'Male'
+               WHEN 2 THEN 'Female'
+               ELSE 'Other'
+           END AS gender,
+           STRING_AGG(DISTINCT cm.crimeno, ', ' ORDER BY cm.crimeno) AS crime_numbers
+    FROM accused a
+    JOIN casemaster cm ON a.casemasterid = cm.casemasterid
+    GROUP BY a.accusedname, a.ageyear, a.genderid
+    ORDER BY case_count DESC
+    LIMIT :top_n
+    """
+    return run_query(query, {"top_n": top_n})
+
+# offender_demographics
+@app.get("/api/analytics/offender_demographics")
+def offender_demographics():
+    query = """
+    SELECT
+        CASE
+            WHEN ageyear < 18 THEN 'Under 18'
+            WHEN ageyear BETWEEN 18 AND 25 THEN '18-25'
+            WHEN ageyear BETWEEN 26 AND 35 THEN '26-35'
+            WHEN ageyear BETWEEN 36 AND 50 THEN '36-50'
+            ELSE 'Over 50'
+        END AS age_group,
+        CASE genderid
+            WHEN 1 THEN 'Male'
+            WHEN 2 THEN 'Female'
+            ELSE 'Other'
+        END AS gender,
+        COUNT(*) AS count
+    FROM accused
+    GROUP BY age_group, gender
+    ORDER BY age_group, gender
+    """
+    return run_query(query)
+
+# victim_demographics
+@app.get("/api/analytics/victim_demographics")
+def victim_demographics():
+    query = """
+    SELECT
+        CASE
+            WHEN ageyear < 18 THEN 'Under 18'
+            WHEN ageyear BETWEEN 18 AND 25 THEN '18-25'
+            WHEN ageyear BETWEEN 26 AND 35 THEN '26-35'
+            WHEN ageyear BETWEEN 36 AND 50 THEN '36-50'
+            ELSE 'Over 50'
+        END AS age_group,
+        CASE genderid
+            WHEN 1 THEN 'Male'
+            WHEN 2 THEN 'Female'
+            ELSE 'Other'
+        END AS gender,
+        COUNT(*) AS count
+    FROM victim
+    GROUP BY age_group, gender
+    ORDER BY age_group, gender
+    """
+    return run_query(query)
+
+
 # District‑wise Crime Count
 @app.get("/api/analytics/district_crimes")
 def district_crimes():
