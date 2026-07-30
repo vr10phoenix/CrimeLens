@@ -279,48 +279,68 @@ def arrest_surrender_ratio():
 # Predictive Development 
 @app.get("/api/analytics/predictive_deployment")
 def predictive_deployment():
-    query = """           
-            WITH recent AS (
-                SELECT d.districtname,
-                       COUNT(cm.casemasterid) AS cases,
-                       SUM(CASE WHEN g.offencetype = 'Heinous' THEN 1 ELSE 0 END) * 2 + SUM(CASE WHEN g.offencetype = 'Non-Heinous' THEN 1 ELSE 0 END) AS severity_weight
-                FROM casemaster cm
-                JOIN gravityoffence g ON cm.gravityoffenceid = g.gravityoffenceid
-                JOIN policestation ps ON cm.policestationid = ps.policestationid
-                JOIN district d ON ps.districtid = d.districtid
-                WHERE cm.crimeregistratereddate >= CURRENT_DATE - INTERVAL '6 months'
-                GROUP BY d.districtname
-            )
-            SELECT districtname,
-                   cases,
-                   severity_weight,
-                   ROUND(severity_weight * 1.1) AS suggested_patrol_hours
-            FROM recent
-            ORDER BY suggested_patrol_hours DESC
-            """
+    try:
+        test = run_query("SELECT offencetype FROM gravityoffence LIMIT 1")
+        use_gravity = True
+    except:
+        use_gravity = False
 
+    if use_gravity:
+        query = """
+        WITH recent AS (
+            SELECT d.districtname,
+                   COUNT(cm.casemasterid) AS cases,
+                   SUM(CASE WHEN g.offencetype = 'Heinous' THEN 1 ELSE 0 END) * 2 +
+                   SUM(CASE WHEN g.offencetype = 'Non-Heinous' THEN 1 ELSE 0 END) AS severity_weight
+            FROM casemaster cm
+            JOIN gravityoffence g ON cm.gravityoffenceid = g.gravityoffenceid
+            JOIN policestation ps ON cm.policestationid = ps.policestationid
+            JOIN district d ON ps.districtid = d.districtid
+            WHERE cm.crimeregistereddate >= CURRENT_DATE - INTERVAL '6 months'
+            GROUP BY d.districtname
+        )
+        SELECT districtname, cases, severity_weight, ROUND(severity_weight * 1.1) AS suggested_patrol_hours
+        FROM recent ORDER BY suggested_patrol_hours DESC
+        """
+    else:
+        query = """
+        WITH recent AS (
+            SELECT d.districtname,
+                   COUNT(cm.casemasterid) AS cases,
+                   SUM(CASE WHEN ch.crimeheadname IN ('Murder','Rape','Attempt to Murder','Dowry Death') THEN 2 ELSE 1 END) AS severity_weight
+            FROM casemaster cm
+            JOIN crimehead ch ON cm.crimemajorheadid = ch.crimeheadid
+            JOIN policestation ps ON cm.policestationid = ps.policestationid
+            JOIN district d ON ps.districtid = d.districtid
+            WHERE cm.crimeregistereddate >= CURRENT_DATE - INTERVAL '6 months'
+            GROUP BY d.districtname
+        )
+        SELECT districtname, cases, severity_weight, ROUND(severity_weight * 1.1) AS suggested_patrol_hours
+        FROM recent ORDER BY suggested_patrol_hours DESC
+        """
     return run_query(query)
 
 
 #Cross district Crime analysis
-app.get("/api/analytics/cross_district_crime")
-def cross_district_crime(limit : int = 10):
+@app.get("/api/analytics/cross_district_crime")
+def cross_district_crime(limit: int = 20):
     query = """
-            SELECT a.accusedname,
-                   d_home.districtname AS home_district,
-                   d_crime.districtname AS crime_district,
-                   COUNT(DISTINCT cm.casemasterid) AS cases_in_other_districts
-            FROM accused a
-            JOIN ext_person ep ON a.accusedname = ep.name AND a.ageyear = ep.age
-            JOIN district d_home ON ep.districtid = d_home.districtid
-            JOIN casemaster cm ON a.casemasterid = cm.casemasterid
-            JOIN policestation ps ON cm.policestationid = ps.policestationid
-            JOIN district d_crime ON ps.districtid = d_crime.districtid
-            GROUP BY a.accusedname , d_home.districtname , d_crime.districtname
-            ORDER BY cases_in_other_districts DESC
-            LIMIT :limit
-            """
-    return run_query(query , {"limit":limit})
+    SELECT a.accusedname,
+           d_home.districtname AS home_district,
+           d_crime.districtname AS crime_district,
+           COUNT(DISTINCT cm.casemasterid) AS cases_in_other_districts
+    FROM accused a
+    JOIN ext_person ep ON a.accusedname = ep.name AND a.ageyear = ep.age
+    JOIN district d_home ON ep.districtid = d_home.districtid
+    JOIN casemaster cm ON a.casemasterid = cm.casemasterid
+    JOIN policestation ps ON cm.policestationid = ps.policestationid
+    JOIN district d_crime ON ps.districtid = d_crime.districtid
+    WHERE d_home.districtid <> d_crime.districtid
+    GROUP BY a.accusedname, d_home.districtname, d_crime.districtname
+    ORDER BY cases_in_other_districts DESC
+    LIMIT :limit
+    """
+    return run_query(query, {"limit": limit})
 
 #case resolution : how many cases on which stage : 
 @app.get("/api/analytics/case_resolution_funnel")
@@ -338,14 +358,14 @@ def case_resolution_funnel():
 #Weapon usage : 
 @app.get("/api/analytics/weapon_usage")
 def weapon_usage():
-    weapons = ['knife' , 'pistol' , 'machete' , 'rod' , 'gun' , 'sword' , 'axe' , 'country-made',
-               'lathi' , 'acid']
+    weapons = ['knife', 'pistol', 'machete', 'rod', 'gun', 'sword', 'axe', 'country-made', 'lathi', 'acid']
     conditions = []
-    for w in weapons:
-        conditions.append(f"SUM(CASE WHEN bfeiffacts ILIKE '%{w}%' THEN 1 ELSE 0 END) AS {w.replace('-','_')}")
+    for i, w in enumerate(weapons):
+        conditions.append(f"SUM(CASE WHEN brieffacts ILIKE :w{i} THEN 1 ELSE 0 END) AS \"{w}\"")
     query = f"SELECT {', '.join(conditions)} FROM casemaster"
-    result = run_query(query)[0]
-    weapon_list = [{"weapon":w.replace('-','_') , "count":result.get(w.replace('-','_'),0)} for w in weapons]
+    params = {f"w{i}": f"%{w}%" for i, w in enumerate(weapons)}
+    result = run_query(query, params)[0]
+    weapon_list = [{"weapon": w, "count": result.get(w, 0)} for w in weapons]
     return weapon_list
 
 #case similarities
