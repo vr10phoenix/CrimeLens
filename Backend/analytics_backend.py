@@ -134,19 +134,255 @@ def district_crime_matrix(top_n: int = 5):
 # crime_severity_index
 @app.get("/api/analytics/crime_severity_index")
 def crime_severity_index():
-  query = """
+    try:
+        test_query = "SELECT * FROM gravityoffence LIMIT 1"
+        run_query(test_query)
+        use_table = "gravityoffence"
+    except:
+        try:
+            test_query = 'SELECT * FROM "GravityOffence" LIMIT 1'
+            run_query(test_query)
+            use_table = '"GravityOffence"'
+        except:
+            query = """
+            SELECT d.districtname,
+                   COUNT(*) AS total_cases,
+                   SUM(CASE WHEN ch.crimeheadname IN ('Murder','Rape','Attempt to Murder','Dowry Death') THEN 1 ELSE 0 END) AS heinous_count,
+                   ROUND(100.0 * SUM(CASE WHEN ch.crimeheadname IN ('Murder','Rape','Attempt to Murder','Dowry Death') THEN 1 ELSE 0 END) / COUNT(*), 2) AS heinous_pct
+            FROM casemaster cm
+            JOIN crimehead ch ON cm.crimemajorheadid = ch.crimeheadid
+            JOIN policestation ps ON cm.policestationid = ps.policestationid
+            JOIN district d ON ps.districtid = d.districtid
+            GROUP BY d.districtname
+            ORDER BY heinous_pct DESC
+            """
+            return run_query(query)
+
+    query = f"""
     SELECT d.districtname,
            COUNT(*) AS total_cases,
            SUM(CASE WHEN g.offencetype = 'Heinous' THEN 1 ELSE 0 END) AS heinous_count,
            ROUND(100.0 * SUM(CASE WHEN g.offencetype = 'Heinous' THEN 1 ELSE 0 END) / COUNT(*), 2) AS heinous_pct
     FROM casemaster cm
-    JOIN gravityoffence g ON cm.gravityoffenceid = g.gravityoffenceid
+    JOIN {use_table} g ON cm.gravityoffenceid = g.gravityoffenceid
     JOIN policestation ps ON cm.policestationid = ps.policestationid
     JOIN district d ON ps.districtid = d.districtid
     GROUP BY d.districtname
     ORDER BY heinous_pct DESC
-   """
-  return run_query(query)
+    """
+    return run_query(query)
+
+@app.get("/api/analytics/gang_network_centrality")
+def gang_network_centrality(limit:int = 20):
+  with neo4j_driver.session() as session: 
+    result = session.run(
+       """
+       MATCH (p:Person)-[r]-()
+       WITH p, count(r) AS degree
+       RETURN p.name AS name, p.personId AS personid, degree
+       ORDER BY degree DESC
+       LIMIT $limit
+       """,
+       limit = limit
+    )
+    nodes = [record.data() for record in result]
+  return nodes
+
+@app.get("/api/analytics/money_laundering_rings")
+def money_laundering_rings():
+    with neo4j_driver.session() as session:
+        try:
+            result = session.run("""
+                MATCH (a:Account)-[r:TRANSFERRED_TO]->(b:Account)
+                WITH a, count(r) AS out_txns, sum(r.amount) AS total_sent
+                WHERE a.balance > 50000
+                RETURN a.accountNumber AS account_number,
+                       a.bank AS bank,
+                       a.balance AS balance,
+                       out_txns,
+                       total_sent
+                ORDER BY total_sent DESC
+                LIMIT 30
+            """)
+            data = [record.data() for record in result]
+            if data:
+                return data
+            else:
+                return {"message": "No high-value transaction patterns found."}
+        except Exception as e:
+            return {"error": f"Neo4j query failed: {str(e)}"}
+
+# Police station performace : No. of cases Registered
+@app.get("/api/analytics/police_station_performance")
+def police_station_performance():
+    query = """
+    SELECT ps.stationname,
+           COUNT(DISTINCT cm.casemasterid) AS cases_registered,
+           COALESCE(SUM(arrest_stats.arrest_count), 0) AS total_arrests,
+           ROUND(AVG(arrest_stats.arrest_days), 1) AS avg_days_to_arrest
+    FROM policestation ps
+    LEFT JOIN casemaster cm ON ps.policestationid = cm.policestationid
+    LEFT JOIN LATERAL (
+        SELECT ars.casemasterid,
+               MIN(ars.arrestsurrenderrdate) - cm.crimeregistereddate AS arrest_days,
+               COUNT(*) AS arrest_count
+        FROM arrestsurrender ars
+        WHERE ars.casemasterid = cm.casemasterid AND ars.isaccused = TRUE
+        GROUP BY ars.casemasterid, cm.crimeregistereddate
+    ) arrest_stats ON TRUE
+    GROUP BY ps.stationname
+    ORDER BY cases_registered DESC
+    """
+    return run_query(query)
+
+# COurt Pendency
+@app.get("/api/analytics/court_pendency")
+def court_pendency():
+    query = """
+            SELECT c.courtname,
+                COUNT(cm.casemasterid) AS total_cases,
+                SUM(CASE WHEN cs.statusname = 'Under Investigation' THEN 1 ELSE 0 END) AS under_investigation,
+                SUM(CASE WHEN cs.statusname = 'Charge Sheeted' THEN 1 ELSE 0 END) AS charge_sheeted,
+                SUM(CASE WHEN cs.statusname = 'Committed to court' THEN 1 ELSE 0 END) AS commited_to_court,
+                SUM(CASE WHEN cs.statusname IN ('Final Report False' , 'Untraced') THEN 1 ELSE 0 END) AS closed_untraced
+                FROM court c
+                JOIN casemaster cm ON c.courtid = cm.courtid
+                JOIN casestatus cs ON cm.casestatusid = cs.casestatusid
+                GROUP BY c.courtname
+                ORDER BY total_cases DESC
+            """
+    return run_query(query)
+
+# Arrest - Surrender Ratio 
+@app.get("/api/analytics/arrest_surrender_ratio")
+def arrest_surrender_ratio():
+    # Check which column name actually exists
+    col_check = run_query("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'arrestsurrender' AND column_name LIKE '%type%'
+    """)
+    if not col_check:
+        return {"error": "No arrest type column found"}
+    col_name = col_check[0]['column_name']  # e.g., 'arrestsurrenderrtypeid' or 'arrestsurrenderrtypeid'
+    
+    query = f"""
+    SELECT TO_CHAR(arrestsurrenderrdate, 'YYYY-MM') AS month,
+           SUM(CASE WHEN {col_name} = 1 THEN 1 ELSE 0 END) AS arrests,
+           SUM(CASE WHEN {col_name} = 2 THEN 1 ELSE 0 END) AS surrenders
+    FROM arrestsurrender
+    WHERE arrestsurrenderrdate IS NOT NULL
+    GROUP BY month
+    ORDER BY month
+    """
+    return run_query(query)
+
+# Predictive Development 
+@app.get("/api/analytics/predictive_deployment")
+def predictive_deployment():
+    query = """           
+            WITH recent AS (
+                SELECT d.districtname,
+                       COUNT(cm.casemasterid) AS cases,
+                       SUM(CASE WHEN g.offencetype = 'Heinous' THEN 1 ELSE 0 END) * 2 + SUM(CASE WHEN g.offencetype = 'Non-Heinous' THEN 1 ELSE 0 END) AS severity_weight
+                FROM casemaster cm
+                JOIN gravityoffence g ON cm.gravityoffenceid = g.gravityoffenceid
+                JOIN policestation ps ON cm.policestationid = ps.policestationid
+                JOIN district d ON ps.districtid = d.districtid
+                WHERE cm.crimeregistratereddate >= CURRENT_DATE - INTERVAL '6 months'
+                GROUP BY d.districtname
+            )
+            SELECT districtname,
+                   cases,
+                   severity_weight,
+                   ROUND(severity_weight * 1.1) AS suggested_patrol_hours
+            FROM recent
+            ORDER BY suggested_patrol_hours DESC
+            """
+
+    return run_query(query)
+
+
+#Cross district Crime analysis
+app.get("/api/analytics/cross_district_crime")
+def cross_district_crime(limit : int = 10):
+    query = """
+            SELECT a.accusedname,
+                   d_home.districtname AS home_district,
+                   d_crime.districtname AS crime_district,
+                   COUNT(DISTINCT cm.casemasterid) AS cases_in_other_districts
+            FROM accused a
+            JOIN ext_person ep ON a.accusedname = ep.name AND a.ageyear = ep.age
+            JOIN district d_home ON ep.districtid = d_home.districtid
+            JOIN casemaster cm ON a.casemasterid = cm.casemasterid
+            JOIN policestation ps ON cm.policestationid = ps.policestationid
+            JOIN district d_crime ON ps.districtid = d_crime.districtid
+            GROUP BY a.accusedname , d_home.districtname , d_crime.districtname
+            ORDER BY cases_in_other_districts DESC
+            LIMIT :limit
+            """
+    return run_query(query , {"limit":limit})
+
+#case resolution : how many cases on which stage : 
+@app.get("/api/analytics/case_resolution_funnel")
+def case_resolution_funnel():
+    query = """
+            SELECT
+                COUNT(*) AS registered,
+                SUM(CASE WHEN casestatusid = 1 THEN 1 ELSE 0 END) AS under_investigation,
+                SUM(CASE WHEN casestatusid = 2 THEN 1 ELSE 0 END) AS commmited_to_court,
+                SUM(CASE WHEN casestatusid = 3 THEN 1 ELSE 0 END) AS closed untracked
+            FROM casemaster
+            """
+    return run_query(query)[0]
+
+#Weapon usage : 
+@app.get("/api/analytics/weapon_usage")
+def weapon_usage():
+    weapons = ['knife' , 'pistol' , 'machete' , 'rod' , 'gun' , 'sword' , 'axe' , 'country-made',
+               'lathi' , 'acid']
+    conditions = []
+    for w in weapons:
+        conditions.append(f"SUM(CASE WHEN bfeiffacts ILIKE '%{w}%' THEN 1 ELSE 0 END) AS {w.replace('-','_')}")
+    query = f"SELECT {', '.join(conditions)} FROM casemaster"
+    result = run_query(query)[0]
+    weapon_list = [{"weapon":w.replace('-','_') , "count":result.get(w.replace('-','_'),0)} for w in weapons]
+    return weapon_list
+
+#case similarities
+@app.get("/api/analytics/case_similarity/{casemasterid}")
+def case_similarity(casemasterid: int, limit: int = 5):
+    target = run_query("SELECT brieffacts FROM casemaster WHERE casemasterid = :id", {"id": casemasterid})
+    if not target:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    words = [w.lower() for w in target[0]['brieffacts'].split() if len(w) > 3]
+    if not words:
+        return []
+    
+    like_clauses = " OR ".join([f"brieffacts ILIKE '%{w}%'" for w in words[:10]])
+    query = f"""
+        SELECT casemasterid, crimeno, brieffacts,
+               (LENGTH(brieffacts) - LENGTH(REPLACE(LOWER(brieffacts), LOWER(:word1), ''))) / LENGTH(:word1) AS score
+        FROM casemaster
+        WHERE casemasterid != :id AND ({like_clauses})
+        ORDER BY score DESC
+        LIMIT :limit
+    """
+    result = run_query(query, {"id": casemasterid, "word1": words[0], "limit": limit})
+    return result
+
+@app.get("/api/analytics/fir_fulltext_search")
+def fir_fulltext_search(q: str = "", limit: int = 20):
+    if not q:
+        return []
+    query = """
+        SELECT casemasterid, crimeno, caseno, brieffacts, crimeregistereddate
+        FROM casemaster
+        WHERE brieffacts ILIKE :search
+        ORDER BY crimeregistereddate DESC
+        LIMIT :limit
+    """
+    return run_query(query, {"search": f"%{q}%", "limit": limit})
 
 #repeat_offenders
 @app.get("/api/analytics/repeat_offenders")
@@ -289,7 +525,6 @@ def get_neo4j_network(limit: int = 100):
     """
     with neo4j_driver.session() as session:
         nodes = []
-        # Persons with gang memberships (limit)
         person_result = session.run(
             "MATCH (p:Person) RETURN p{.*, nodeType:'Person'} LIMIT $limit", limit=limit
         )
