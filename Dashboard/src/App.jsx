@@ -6,6 +6,7 @@ import {
   DatabaseIcon , ShieldAlert
 } from 'lucide-react';
 import axios from 'axios';
+import AnalyticsPage from './pages/AnalyticsPage';
 
 // MOCK DATA: KARNATAKA POLICE INTEL
 const MOCK_DATA = {
@@ -209,7 +210,7 @@ const ChatModule = () => {
   );
 };
 
-
+// Not using : updated and more powerful module used 
 // CRIME ANALYTICS
 const AnalyticsModule = () => {
   const [stats, setStats] = useState(null);
@@ -454,8 +455,6 @@ const MLPredictiveModule = () => {
     fetchData();
   }, []);
 
-  // Convert district crime counts into a simple 8x8 heatmap (64 cells)
-  // We'll assign each district a number of cells proportional to its case count
   const maxCases = Math.max(...districtData.map(d => d.case_count), 1);
   const heatGrid = districtData.length > 0
     ? Array.from({ length: 64 }).map((_, i) => {
@@ -610,7 +609,6 @@ const NetworkModule = () => {
       });
   }, []);
 
-  // --- PAN & ZOOM LOGIC ---
   const handleWheel = (e) => {
     e.preventDefault();
     const zoomFactor = 0.1;
@@ -634,7 +632,6 @@ const NetworkModule = () => {
   const handleMouseUp = () => setIsDragging(false);
   const resetView = () => { setScale(0.8); setPan({ x: 0, y: 0 }); };
 
-  // Utility to shorten long FIR names so they don't cover the screen
   const formatNodeName = (name, role) => {
     if (role === 'Case' && name.length > 20) {
       const parts = name.split('/');
@@ -894,7 +891,7 @@ export default function App() {
         {/* ROUTER OUTLET */}
         <div className="flex-1 overflow-hidden relative">
           {activeModule === 'chat' && <ChatModule />}
-          {activeModule === 'analytics' && <AnalyticsModule />}
+          {activeModule === 'analytics' && <AnalyticsPage />}
           {activeModule === 'ml' && <MLPredictiveModule />}
           {activeModule === 'network' && <NetworkModule />}
         </div>
