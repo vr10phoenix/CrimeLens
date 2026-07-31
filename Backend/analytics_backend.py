@@ -67,11 +67,12 @@ def enhanced_stats():
 @app.get("/api/analytics/hourly_heatmap")
 def hourly_heatmap():
     query = """
-     SELECT EXTRACT (HOUR FROM crimeregistereddate)::int AS hour:
-          COUNT(*) AS cases
-     FROM casemaster
-     GROUP BY hour
-     ORDER BY hour
+    SELECT EXTRACT(HOUR FROM incidentfromdate)::int AS hour,
+           COUNT(*) AS cases
+    FROM casemaster
+    WHERE incidentfromdate IS NOT NULL
+    GROUP BY hour
+    ORDER BY hour
     """
     return run_query(query)
 
@@ -79,13 +80,12 @@ def hourly_heatmap():
 @app.get("/api/analytics/day_of_week")
 def day_of_week():
     query = """
-    SELECT TO_CHAR(crimeregistereddate, 'DAY') AS day_name,
-      COUNT(*) AS cases,
-      EXTRACTION(DOW FROM crimeregistereddate)::int AS dow_num
-      FROM casemaster
-      GROUP BY day_name , dow_num
-      ORDER BY dow_num
-
+    SELECT TO_CHAR(crimeregistereddate, 'Day') AS day_name,
+           COUNT(*) AS cases,
+           EXTRACT(DOW FROM crimeregistereddate)::int AS dow_num
+    FROM casemaster
+    GROUP BY day_name, dow_num
+    ORDER BY dow_num
     """
     return run_query(query)
 
