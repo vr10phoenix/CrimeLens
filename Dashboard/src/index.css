@@ -1,1 +1,5 @@
 @import "tailwindcss";
+.chart-container {
+  min-width: 0;
+  width: 100%;
+}
