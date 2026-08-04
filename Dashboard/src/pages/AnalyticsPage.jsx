@@ -5,18 +5,20 @@ import TemporalSection from '../components/TemporalSection';
 import SpatialSection from '../components/SpatialSection';
 import ProfilingSection from '../components/ProfilingSection';
 import NetworkSection from '../components/NetworkSection';
+import ErrorBoundary from '../components/ErrorBoundary';
+
 
 const AnalyticsPage = () => {
   const [liveMode, setLiveMode] = useState(false);
 
   return (
     <div className="h-screen bg-slate-950 text-slate-200 relative overflow-y-auto">
-      {/* Background grid – keep as is */}
+      {/* Background grid*/}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(16,185,129,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(16,185,129,0.03)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
       {/* Scanline overlay */}
       <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxkZWZzPjxwYXR0ZXJuIGlkPSJzY2FuIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIyMHB4IiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxcHgiIGZpbGw9InJnYmEoMTYsIDE4NSwgMTI5LCAwLjA0KSIgLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjc2NhbikiIC8+PC9zdmc+')] pointer-events-none opacity-50" />
 
-      {/* Main content – now scrolls properly */}
+      {/* Main content*/}
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-8 space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -47,11 +49,11 @@ const AnalyticsPage = () => {
         </div>
 
         {/* Sections */}
-        <CommandCentreCards liveMode={liveMode} />
-        <TemporalSection />
-        <SpatialSection />
-        <ProfilingSection />
-        <NetworkSection />
+        <ErrorBoundary><CommandCentreCards liveMode={liveMode} /></ErrorBoundary>
+        <ErrorBoundary><TemporalSection /></ErrorBoundary>
+        <ErrorBoundary><SpatialSection /></ErrorBoundary>
+        <ErrorBoundary><ProfilingSection /></ErrorBoundary>
+        <ErrorBoundary><NetworkSection /></ErrorBoundary>
       </div>
     </div>
   );
